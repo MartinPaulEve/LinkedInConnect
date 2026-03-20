@@ -5,6 +5,7 @@ This tool syncs blog posts from [eve.gd](https://eve.gd/posts/) to your LinkedIn
 ## Prerequisites
 
 - Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - A LinkedIn account
 - A LinkedIn Developer Application (instructions below)
 
@@ -12,8 +13,10 @@ This tool syncs blog posts from [eve.gd](https://eve.gd/posts/) to your LinkedIn
 
 ```bash
 cd LinkedInConnect
-pip install -r requirements.txt
+uv sync
 ```
+
+This reads `pyproject.toml` and installs all dependencies into a virtual environment managed by uv.
 
 ## Step 2: Create a LinkedIn Developer Application
 
@@ -67,7 +70,13 @@ LINKEDIN_PERSON_URN=""
 Run the OAuth helper script:
 
 ```bash
-python oauth_helper.py
+uv run linkedin-oauth
+```
+
+Or directly:
+
+```bash
+uv run python oauth_helper.py
 ```
 
 This will:
@@ -89,17 +98,19 @@ LinkedIn access tokens typically expire after **60 days**. When your token expir
 Test that everything works with a dry run:
 
 ```bash
-python sync.py --dry-run
+uv run linkedin-sync --dry-run
 ```
 
 This will fetch the feed, find today's posts, format them, and show what would be posted — without actually posting anything.
 
 ## Usage
 
+All commands can be run with `uv run linkedin-sync` (the installed entry point) or `uv run python sync.py`.
+
 ### Sync today's posts
 
 ```bash
-python sync.py
+uv run linkedin-sync
 ```
 
 This finds all posts published today in the Atom feed that haven't been synced yet, and posts them to LinkedIn.
@@ -107,32 +118,32 @@ This finds all posts published today in the Atom feed that haven't been synced y
 ### Sync a specific post
 
 ```bash
-python sync.py --url "https://eve.gd/2025/03/17/institutional-stupidity/"
+uv run linkedin-sync post "https://eve.gd/2025/03/17/institutional-stupidity/"
 ```
 
 ### Force re-sync a post
 
 ```bash
-python sync.py --url "https://eve.gd/2025/03/17/some-post/" --force
+uv run linkedin-sync --force post "https://eve.gd/2025/03/17/some-post/"
 ```
 
 ### Dry run (preview without posting)
 
 ```bash
-python sync.py --dry-run
-python sync.py --url "https://eve.gd/2025/03/17/some-post/" --dry-run
+uv run linkedin-sync --dry-run
+uv run linkedin-sync --dry-run post "https://eve.gd/2025/03/17/some-post/"
 ```
 
 ### List synced posts
 
 ```bash
-python sync.py --list
+uv run linkedin-sync list
 ```
 
 ### Use a custom feed URL
 
 ```bash
-python sync.py --feed-url "https://eve.gd/feed/feed.atom"
+uv run linkedin-sync --feed-url "https://eve.gd/feed/feed.atom"
 ```
 
 ## Running After Publishing a Blog Post
@@ -142,14 +153,14 @@ You can run `sync.py` manually after publishing a post, or set up a simple autom
 ### Option A: Manual (run after publishing)
 
 ```bash
-python sync.py
+uv run linkedin-sync
 ```
 
 ### Option B: Cron job (check daily)
 
 ```cron
 # Run daily at noon — only syncs today's posts
-0 12 * * * cd /path/to/LinkedInConnect && python sync.py >> sync.log 2>&1
+0 12 * * * cd /path/to/LinkedInConnect && uv run linkedin-sync >> sync.log 2>&1
 ```
 
 ### Option C: Post-publish hook
@@ -160,7 +171,7 @@ If your blog has a post-publish hook (e.g., Hugo, Jekyll, WordPress), call the s
 #!/bin/bash
 # post-publish.sh
 cd /path/to/LinkedInConnect
-python sync.py
+uv run linkedin-sync
 ```
 
 ## How It Works
@@ -187,7 +198,7 @@ python sync.py
 ## Troubleshooting
 
 ### "401 Unauthorized" errors
-Your access token has expired. Run `python oauth_helper.py` to get a new one.
+Your access token has expired. Run `uv run linkedin-oauth` to get a new one.
 
 ### "403 Forbidden" errors
 Your app may not have the required permissions. Check that "Share on LinkedIn" is approved in your app's Products tab.

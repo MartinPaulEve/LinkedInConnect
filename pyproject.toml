@@ -1,0 +1,22 @@
+[project]
+name = "linkedin-blog-sync"
+version = "0.1.0"
+description = "Sync blog posts from eve.gd to LinkedIn"
+readme = "SETUP.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.0",
+    "requests>=2.31.0",
+    "feedparser>=6.0.0",
+    "beautifulsoup4>=4.12.0",
+    "markdown>=3.5.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+linkedin-sync = "sync:cli"
+linkedin-oauth = "oauth_helper:get_access_token"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
