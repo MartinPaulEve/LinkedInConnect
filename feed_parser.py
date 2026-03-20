@@ -1,0 +1,182 @@
+"""Parse the eve.gd Atom feed and extract blog post data."""
+
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, date, timezone
+from typing import Optional
+
+import feedparser
+from bs4 import BeautifulSoup
+
+
+FEED_URL = "https://eve.gd/feed/feed.atom"
+
+
+@dataclass
+class BlogPost:
+    """A parsed blog post from the Atom feed."""
+    id: str
+    title: str
+    url: str
+    published: datetime
+    updated: Optional[datetime]
+    content_html: str
+    summary: str
+    featured_image_url: Optional[str]
+    doi: Optional[str]
+    author: str = ""
+    tags: list[str] = field(default_factory=list)
+
+    @property
+    def published_date(self) -> date:
+        return self.published.date()
+
+
+def parse_feed(feed_url: str = FEED_URL) -> list[BlogPost]:
+    """Parse the Atom feed and return a list of BlogPost objects."""
+    feed = feedparser.parse(feed_url)
+    posts = []
+
+    for entry in feed.entries:
+        post = _parse_entry(entry)
+        if post:
+            posts.append(post)
+
+    return posts
+
+
+def _parse_entry(entry) -> Optional[BlogPost]:
+    """Parse a single feed entry into a BlogPost."""
+    entry_id = getattr(entry, "id", "") or getattr(entry, "link", "")
+    title = getattr(entry, "title", "Untitled")
+    url = getattr(entry, "link", "")
+
+    # Parse dates
+    published = _parse_date(entry, "published_parsed") or _parse_date(entry, "updated_parsed")
+    updated = _parse_date(entry, "updated_parsed")
+
+    if not published:
+        return None
+
+    # Get content - prefer full content over summary
+    content_html = ""
+    if hasattr(entry, "content") and entry.content:
+        content_html = entry.content[0].get("value", "")
+    elif hasattr(entry, "summary"):
+        content_html = entry.summary or ""
+
+    # Extract featured image
+    featured_image_url = _extract_featured_image(entry, content_html)
+
+    # Extract DOI
+    doi = _extract_doi(content_html, title)
+
+    # Build a text summary
+    summary = _html_to_text_summary(content_html, max_length=300)
+
+    # Tags/categories
+    tags = []
+    if hasattr(entry, "tags"):
+        tags = [t.get("term", "") for t in entry.tags if t.get("term")]
+
+    author = ""
+    if hasattr(entry, "author"):
+        author = entry.author
+
+    return BlogPost(
+        id=entry_id,
+        title=title,
+        url=url,
+        published=published,
+        updated=updated,
+        content_html=content_html,
+        summary=summary,
+        featured_image_url=featured_image_url,
+        doi=doi,
+        author=author,
+        tags=tags,
+    )
+
+
+def _parse_date(entry, attr: str) -> Optional[datetime]:
+    """Parse a date from a feed entry attribute."""
+    parsed = getattr(entry, attr, None)
+    if parsed:
+        from time import mktime
+        return datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
+    return None
+
+
+def _extract_featured_image(entry, content_html: str) -> Optional[str]:
+    """Extract the featured image URL from entry metadata or content."""
+    # Check for media:thumbnail or media:content
+    if hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
+        return entry.media_thumbnail[0].get("url")
+    if hasattr(entry, "media_content") and entry.media_content:
+        for media in entry.media_content:
+            if media.get("medium") == "image" or "image" in media.get("type", ""):
+                return media.get("url")
+
+    # Check for enclosures
+    if hasattr(entry, "enclosures") and entry.enclosures:
+        for enc in entry.enclosures:
+            if "image" in enc.get("type", ""):
+                return enc.get("href")
+
+    # Check entry links for image type
+    if hasattr(entry, "links"):
+        for link in entry.links:
+            if link.get("rel") == "enclosure" and "image" in link.get("type", ""):
+                return link.get("href")
+
+    # Fall back to first image in content
+    if content_html:
+        soup = BeautifulSoup(content_html, "html.parser")
+        img = soup.find("img")
+        if img and img.get("src"):
+            return img["src"]
+
+    return None
+
+
+def _extract_doi(content_html: str, title: str = "") -> Optional[str]:
+    """Extract a DOI from the content HTML."""
+    # Common DOI patterns
+    doi_patterns = [
+        r'(?:doi\.org/|DOI:\s*|doi:\s*)(10\.\d{4,}/[^\s<>"]+)',
+        r'(10\.\d{4,}/[^\s<>"]+)',
+    ]
+
+    text_to_search = content_html + " " + title
+    for pattern in doi_patterns:
+        match = re.search(pattern, text_to_search, re.IGNORECASE)
+        if match:
+            doi = match.group(1).rstrip(".,;)")
+            return doi
+
+    return None
+
+
+def _html_to_text_summary(html: str, max_length: int = 300) -> str:
+    """Convert HTML to plain text and truncate."""
+    if not html:
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(separator=" ", strip=True)
+    if len(text) > max_length:
+        text = text[:max_length].rsplit(" ", 1)[0] + "..."
+    return text
+
+
+def get_todays_posts(feed_url: str = FEED_URL) -> list[BlogPost]:
+    """Get only posts published today."""
+    today = date.today()
+    return [p for p in parse_feed(feed_url) if p.published_date == today]
+
+
+def get_post_by_url(url: str, feed_url: str = FEED_URL) -> Optional[BlogPost]:
+    """Find a specific post by its URL."""
+    for post in parse_feed(feed_url):
+        if post.url == url or post.id == url:
+            return post
+    return None

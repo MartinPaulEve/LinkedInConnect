@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+*.env.local
+
+# Sync state (contains post tracking data - may want to commit this)
+# Uncomment the next line to exclude sync state from git:
+# sync_state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files from image downloads
+*.tmp
