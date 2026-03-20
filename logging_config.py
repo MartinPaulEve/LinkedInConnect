@@ -10,7 +10,7 @@ def configure_logging(json_logs: bool = False, verbosity: int = logging.INFO):
     """Configure structlog with either rich console or JSON output.
 
     Args:
-        json_logs: If True, output JSON lines. If False, use rich console rendering.
+        json_logs: If True, output JSON lines. Otherwise rich.
         verbosity: Logging level (e.g. logging.DEBUG, logging.INFO).
     """
     shared_processors: list[structlog.types.Processor] = [
@@ -23,7 +23,9 @@ def configure_logging(json_logs: bool = False, verbosity: int = logging.INFO):
     ]
 
     if json_logs:
-        renderer: structlog.types.Processor = structlog.processors.JSONRenderer()
+        renderer: structlog.types.Processor = (
+            structlog.processors.JSONRenderer()
+        )
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 

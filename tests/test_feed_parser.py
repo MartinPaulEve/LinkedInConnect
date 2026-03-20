@@ -1,11 +1,9 @@
 """Tests for feed_parser module."""
 
-from datetime import datetime, date, timezone
+from datetime import date, datetime, timezone
 from time import struct_time
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from feed_parser import (
     BlogPost,
@@ -25,10 +23,15 @@ class TestBlogPost:
 
     def test_published_date_utc(self):
         post = BlogPost(
-            id="x", title="x", url="x",
+            id="x",
+            title="x",
+            url="x",
             published=datetime(2025, 6, 15, 23, 59, 59, tzinfo=timezone.utc),
-            updated=None, content_html="", summary="",
-            featured_image_url=None, doi=None,
+            updated=None,
+            content_html="",
+            summary="",
+            featured_image_url=None,
+            doi=None,
         )
         assert post.published_date == date(2025, 6, 15)
 
@@ -71,39 +74,63 @@ class TestExtractFeaturedImage:
         entry = SimpleNamespace(
             media_thumbnail=[{"url": "https://example.com/thumb.jpg"}],
         )
-        assert _extract_featured_image(entry, "") == "https://example.com/thumb.jpg"
+        assert (
+            _extract_featured_image(entry, "")
+            == "https://example.com/thumb.jpg"
+        )
 
     def test_media_content_image(self):
         entry = SimpleNamespace(
             media_thumbnail=None,
-            media_content=[{"medium": "image", "url": "https://example.com/img.png"}],
+            media_content=[
+                {"medium": "image", "url": "https://example.com/img.png"}
+            ],
         )
-        assert _extract_featured_image(entry, "") == "https://example.com/img.png"
+        assert (
+            _extract_featured_image(entry, "") == "https://example.com/img.png"
+        )
 
     def test_media_content_by_type(self):
         entry = SimpleNamespace(
             media_thumbnail=None,
-            media_content=[{"type": "image/jpeg", "url": "https://example.com/img.jpg"}],
+            media_content=[
+                {"type": "image/jpeg", "url": "https://example.com/img.jpg"}
+            ],
         )
-        assert _extract_featured_image(entry, "") == "https://example.com/img.jpg"
+        assert (
+            _extract_featured_image(entry, "") == "https://example.com/img.jpg"
+        )
 
     def test_enclosure(self):
         entry = SimpleNamespace(
             media_thumbnail=None,
             media_content=None,
-            enclosures=[{"type": "image/png", "href": "https://example.com/enc.png"}],
+            enclosures=[
+                {"type": "image/png", "href": "https://example.com/enc.png"}
+            ],
             links=[],
         )
-        assert _extract_featured_image(entry, "") == "https://example.com/enc.png"
+        assert (
+            _extract_featured_image(entry, "") == "https://example.com/enc.png"
+        )
 
     def test_link_enclosure(self):
         entry = SimpleNamespace(
             media_thumbnail=None,
             media_content=None,
             enclosures=[],
-            links=[{"rel": "enclosure", "type": "image/jpeg", "href": "https://example.com/link.jpg"}],
+            links=[
+                {
+                    "rel": "enclosure",
+                    "type": "image/jpeg",
+                    "href": "https://example.com/link.jpg",
+                }
+            ],
         )
-        assert _extract_featured_image(entry, "") == "https://example.com/link.jpg"
+        assert (
+            _extract_featured_image(entry, "")
+            == "https://example.com/link.jpg"
+        )
 
     def test_image_in_content_html(self):
         entry = SimpleNamespace(
@@ -113,7 +140,10 @@ class TestExtractFeaturedImage:
             links=[],
         )
         html = '<p>Some text</p><img src="https://example.com/content.jpg" />'
-        assert _extract_featured_image(entry, html) == "https://example.com/content.jpg"
+        assert (
+            _extract_featured_image(entry, html)
+            == "https://example.com/content.jpg"
+        )
 
     def test_no_image_anywhere(self):
         entry = SimpleNamespace(
@@ -166,8 +196,11 @@ class TestParseEntry:
 
     def test_entry_no_date_returns_none(self):
         entry = SimpleNamespace(
-            id="x", title="No Date Post", link="https://example.com",
-            published_parsed=None, updated_parsed=None,
+            id="x",
+            title="No Date Post",
+            link="https://example.com",
+            published_parsed=None,
+            updated_parsed=None,
         )
         assert _parse_entry(entry) is None
 
@@ -222,8 +255,11 @@ class TestParseFeed:
     @patch("feed_parser.feedparser.parse")
     def test_skips_entries_without_dates(self, mock_parse):
         bad_entry = SimpleNamespace(
-            id="x", title="Bad", link="https://example.com",
-            published_parsed=None, updated_parsed=None,
+            id="x",
+            title="Bad",
+            link="https://example.com",
+            published_parsed=None,
+            updated_parsed=None,
         )
         mock_parse.return_value = MagicMock(entries=[bad_entry], bozo=False)
         posts = parse_feed("https://example.com/feed.atom")
@@ -238,16 +274,26 @@ class TestGetTodaysPosts:
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
         posts = [
             BlogPost(
-                id="a", title="Today", url="https://eve.gd/today",
+                id="a",
+                title="Today",
+                url="https://eve.gd/today",
                 published=datetime(2025, 3, 17, 10, 0, tzinfo=timezone.utc),
-                updated=None, content_html="", summary="",
-                featured_image_url=None, doi=None,
+                updated=None,
+                content_html="",
+                summary="",
+                featured_image_url=None,
+                doi=None,
             ),
             BlogPost(
-                id="b", title="Yesterday", url="https://eve.gd/yesterday",
+                id="b",
+                title="Yesterday",
+                url="https://eve.gd/yesterday",
                 published=datetime(2025, 3, 16, 10, 0, tzinfo=timezone.utc),
-                updated=None, content_html="", summary="",
-                featured_image_url=None, doi=None,
+                updated=None,
+                content_html="",
+                summary="",
+                featured_image_url=None,
+                doi=None,
             ),
         ]
         mock_parse.return_value = posts
@@ -260,18 +306,24 @@ class TestGetPostByUrl:
     @patch("feed_parser.parse_feed")
     def test_finds_by_url(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
-        result = get_post_by_url(sample_blog_post.url, "https://example.com/feed.atom")
+        result = get_post_by_url(
+            sample_blog_post.url, "https://example.com/feed.atom"
+        )
         assert result is not None
         assert result.title == sample_blog_post.title
 
     @patch("feed_parser.parse_feed")
     def test_finds_by_id(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
-        result = get_post_by_url(sample_blog_post.id, "https://example.com/feed.atom")
+        result = get_post_by_url(
+            sample_blog_post.id, "https://example.com/feed.atom"
+        )
         assert result is not None
 
     @patch("feed_parser.parse_feed")
     def test_returns_none_when_not_found(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
-        result = get_post_by_url("https://eve.gd/nonexistent/", "https://example.com/feed.atom")
+        result = get_post_by_url(
+            "https://eve.gd/nonexistent/", "https://example.com/feed.atom"
+        )
         assert result is None

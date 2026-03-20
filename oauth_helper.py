@@ -14,7 +14,6 @@ Requires LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET environment variables.
 """
 
 import http.server
-import json
 import os
 import sys
 import threading
@@ -54,7 +53,9 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
                 b"</body></html>"
             )
         elif "error" in params:
-            OAuthCallbackHandler.error = params.get("error_description", params["error"])[0]
+            OAuthCallbackHandler.error = params.get(
+                "error_description", params["error"]
+            )[0]
             self.send_response(400)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
@@ -76,8 +77,14 @@ def get_access_token():
     client_secret = os.environ.get("LINKEDIN_CLIENT_SECRET")
 
     if not client_id or not client_secret:
-        print("ERROR: Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET environment variables.")
-        print("See SETUP.md for instructions on creating a LinkedIn Developer App.")
+        print(
+            "ERROR: Set LINKEDIN_CLIENT_ID and"
+            " LINKEDIN_CLIENT_SECRET env vars."
+        )
+        print(
+            "See SETUP.md for instructions on"
+            " creating a LinkedIn Developer App."
+        )
         sys.exit(1)
 
     # Step 1: Build authorization URL
@@ -90,13 +97,15 @@ def get_access_token():
     auth_url = f"{AUTHORIZATION_URL}?{urllib.parse.urlencode(auth_params)}"
 
     # Step 2: Start local server for callback
-    server = http.server.HTTPServer(("localhost", REDIRECT_PORT), OAuthCallbackHandler)
+    server = http.server.HTTPServer(
+        ("localhost", REDIRECT_PORT), OAuthCallbackHandler
+    )
     server_thread = threading.Thread(target=server.handle_request)
     server_thread.start()
 
     # Step 3: Open browser for authorization
-    print(f"\nOpening browser for LinkedIn authorization...")
-    print(f"If the browser doesn't open, visit this URL manually:\n")
+    print("\nOpening browser for LinkedIn authorization...")
+    print("If the browser doesn't open, visit this URL manually:\n")
     print(f"  {auth_url}\n")
     webbrowser.open(auth_url)
 
@@ -135,11 +144,13 @@ def get_access_token():
     access_token = token_info["access_token"]
     expires_in = token_info.get("expires_in", "unknown")
 
-    print(f"\nAccess token obtained successfully!")
-    print(f"Expires in: {expires_in} seconds ({int(expires_in)//86400} days)")
-    print(f"\nYour access token:\n")
+    print("\nAccess token obtained successfully!")
+    print(
+        f"Expires in: {expires_in} seconds ({int(expires_in) // 86400} days)"
+    )
+    print("\nYour access token:\n")
     print(f"  {access_token}")
-    print(f"\nAdd this to your .env file:")
+    print("\nAdd this to your .env file:")
     print(f'  LINKEDIN_ACCESS_TOKEN="{access_token}"')
 
     # Step 6: Fetch person URN
@@ -154,7 +165,9 @@ def get_access_token():
         me_data = me_resp.json()
         person_id = me_data.get("id", "")
         person_urn = f"urn:li:person:{person_id}"
-        name = f"{me_data.get('localizedFirstName', '')} {me_data.get('localizedLastName', '')}".strip()
+        first = me_data.get("localizedFirstName", "")
+        last = me_data.get("localizedLastName", "")
+        name = f"{first} {last}".strip()
         print(f"  Authenticated as: {name}")
         print(f"  Person URN: {person_urn}")
         print(f'\n  LINKEDIN_PERSON_URN="{person_urn}"')

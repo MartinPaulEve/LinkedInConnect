@@ -14,6 +14,7 @@ LinkedIn, preserving structure with line breaks and bullet points.
 """
 
 import re
+
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from logging_config import get_logger
@@ -31,8 +32,8 @@ def format_for_linkedin(
     title: str,
     content_html: str,
     post_url: str,
-    doi: str = None,
-    tags: list[str] = None,
+    doi: str | None = None,
+    tags: list[str] | None = None,
     max_length: int = MAX_LINKEDIN_POST_LENGTH,
 ) -> str:
     """Format a blog post for LinkedIn.
@@ -89,7 +90,11 @@ def format_for_linkedin(
         full_text = _truncate_text(full_text, available_length)
 
     result = full_text + "\n" + footer
-    log.info("post_formatted", total_length=len(result), truncated=len(full_text) < len("\n".join(parts)))
+    log.info(
+        "post_formatted",
+        total_length=len(result),
+        truncated=len(full_text) < len("\n".join(parts)),
+    )
     return result
 
 
@@ -135,9 +140,20 @@ def _process_element(element, lines: list, depth: int = 0):
 
     # Block-level elements that need line breaks
     block_tags = {
-        "p", "div", "section", "article", "main", "aside",
-        "h1", "h2", "h3", "h4", "h5", "h6",
-        "br", "hr",
+        "p",
+        "div",
+        "section",
+        "article",
+        "main",
+        "aside",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "br",
+        "hr",
     }
 
     # Headings
@@ -196,14 +212,13 @@ def _process_element(element, lines: list, depth: int = 0):
         return
 
     # Pre/code blocks
-    if tag_name in ("pre", "code"):
-        if tag_name == "pre":
-            lines.append("")
-            text = element.get_text()
-            for line in text.split("\n"):
-                lines.append(f"  {line}")
-            lines.append("")
-            return
+    if tag_name in ("pre", "code") and tag_name == "pre":
+        lines.append("")
+        text = element.get_text()
+        for line in text.split("\n"):
+            lines.append(f"  {line}")
+        lines.append("")
+        return
 
     # Links - include the URL inline
     if tag_name == "a":
@@ -252,7 +267,7 @@ def _process_element(element, lines: list, depth: int = 0):
 
 
 def _truncate_text(text: str, max_length: int) -> str:
-    """Truncate text to max_length, breaking at paragraph or sentence boundary."""
+    """Truncate text at paragraph or sentence boundary."""
     if len(text) <= max_length:
         return text
 

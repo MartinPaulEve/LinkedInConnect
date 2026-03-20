@@ -18,8 +18,14 @@ LINKEDIN_VERSION = "202602"
 class LinkedInClient:
     """Client for LinkedIn Community Management API (Posts + Images)."""
 
-    def __init__(self, access_token: str = None, person_urn: str = None):
-        self.access_token = access_token or os.environ.get("LINKEDIN_ACCESS_TOKEN")
+    def __init__(
+        self,
+        access_token: str | None = None,
+        person_urn: str | None = None,
+    ):
+        self.access_token = access_token or os.environ.get(
+            "LINKEDIN_ACCESS_TOKEN"
+        )
         self.person_urn = person_urn or os.environ.get("LINKEDIN_PERSON_URN")
         if not self.access_token:
             raise ValueError(
@@ -55,7 +61,11 @@ class LinkedInClient:
         log.info("profile_fetched", profile_id=profile.get("id"))
         return profile
 
-    def upload_image(self, image_path: str = None, image_url: str = None) -> str:
+    def upload_image(
+        self,
+        image_path: str | None = None,
+        image_url: str | None = None,
+    ) -> str:
         """Upload an image to LinkedIn and return the image URN.
 
         Provide either a local file path or a URL to download from.
@@ -99,18 +109,22 @@ class LinkedInClient:
             data=image_data,
         )
         upload_resp.raise_for_status()
-        log.info("image_uploaded", image_urn=image_urn, size_bytes=len(image_data))
+        log.info(
+            "image_uploaded",
+            image_urn=image_urn,
+            size_bytes=len(image_data),
+        )
 
         return image_urn
 
     def create_post(
         self,
         text: str,
-        image_urn: str = None,
-        image_alt_text: str = None,
-        article_url: str = None,
-        article_title: str = None,
-        article_description: str = None,
+        image_urn: str | None = None,
+        image_alt_text: str | None = None,
+        article_url: str | None = None,
+        article_title: str | None = None,
+        article_description: str | None = None,
     ) -> str:
         """Create a LinkedIn post. Returns the post URN.
 
@@ -190,9 +204,13 @@ class LinkedInClient:
         if path_ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
             suffix = path_ext
 
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        for chunk in resp.iter_content(chunk_size=8192):
-            tmp.write(chunk)
-        tmp.close()
-        log.debug("image_downloaded", path=tmp.name, content_type=content_type)
-        return tmp.name
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            for chunk in resp.iter_content(chunk_size=8192):
+                tmp.write(chunk)
+            tmp_name = tmp.name
+        log.debug(
+            "image_downloaded",
+            path=tmp_name,
+            content_type=content_type,
+        )
+        return tmp_name

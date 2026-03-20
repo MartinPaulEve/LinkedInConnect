@@ -2,10 +2,9 @@
 
 import json
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from logging_config import get_logger
 
@@ -19,6 +18,7 @@ DEFAULT_STATE_FILE = os.path.join(
 @dataclass
 class SyncRecord:
     """Record of a single synced post."""
+
     post_url: str
     post_title: str
     linkedin_post_urn: str
@@ -29,17 +29,21 @@ class SyncRecord:
 class SyncTracker:
     """Tracks which posts have been synced to LinkedIn using a JSON file."""
 
-    def __init__(self, state_file: str = None):
+    def __init__(self, state_file: str | None = None):
         self.state_file = state_file or os.environ.get(
             "SYNC_STATE_FILE", DEFAULT_STATE_FILE
         )
         self._state = self._load()
-        log.info("sync_tracker_initialized", state_file=self.state_file, synced_count=len(self.get_synced_posts()))
+        log.info(
+            "sync_tracker_initialized",
+            state_file=self.state_file,
+            synced_count=len(self.get_synced_posts()),
+        )
 
     def _load(self) -> dict:
         """Load state from the JSON file."""
         if Path(self.state_file).exists():
-            with open(self.state_file, "r") as f:
+            with open(self.state_file) as f:
                 data = json.load(f)
             log.debug("state_loaded", path=self.state_file)
             return data
@@ -76,13 +80,17 @@ class SyncTracker:
         )
         self._state.setdefault("synced_posts", {})[post_url] = asdict(record)
         self._save()
-        log.info("post_marked_synced", post_url=post_url, linkedin_urn=linkedin_post_urn)
+        log.info(
+            "post_marked_synced",
+            post_url=post_url,
+            linkedin_urn=linkedin_post_urn,
+        )
 
     def get_synced_posts(self) -> dict:
         """Return all synced post records."""
         return self._state.get("synced_posts", {})
 
-    def get_record(self, post_url: str) -> Optional[dict]:
+    def get_record(self, post_url: str) -> dict | None:
         """Get the sync record for a specific post."""
         return self._state.get("synced_posts", {}).get(post_url)
 

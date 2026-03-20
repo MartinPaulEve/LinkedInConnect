@@ -3,8 +3,6 @@
 import json
 import logging
 
-import structlog
-
 from logging_config import configure_logging, get_logger
 
 

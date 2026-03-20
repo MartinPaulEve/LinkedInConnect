@@ -1,19 +1,17 @@
 """Shared fixtures for the test suite."""
 
 import json
-import os
 from datetime import datetime, timezone
-from pathlib import Path
 from time import struct_time
 from unittest.mock import MagicMock
 
 import pytest
 
-# Configure logging before any module import triggers get_logger
 from logging_config import configure_logging
+
 configure_logging(json_logs=False)
 
-from feed_parser import BlogPost
+from feed_parser import BlogPost  # noqa: E402
 
 
 @pytest.fixture
@@ -27,9 +25,12 @@ def sample_blog_post():
         updated=datetime(2025, 3, 17, 10, 30, 0, tzinfo=timezone.utc),
         content_html=(
             "<h2>Introduction</h2>"
-            "<p>This is a <strong>blog post</strong> about institutional stupidity.</p>"
-            "<p>It has <a href=\"https://example.com\">a link</a> and more content.</p>"
-            '<img src="https://eve.gd/images/featured.jpg" alt="Featured" />'
+            "<p>This is a <strong>blog post</strong>"
+            " about institutional stupidity.</p>"
+            '<p>It has <a href="https://example.com">'
+            "a link</a> and more content.</p>"
+            '<img src="https://eve.gd/images/featured.jpg"'
+            ' alt="Featured" />'
             "<blockquote>A famous quote about institutions.</blockquote>"
             "<ul><li>Point one</li><li>Point two</li><li>Point three</li></ul>"
             '<p>DOI: <a href="https://doi.org/10.1234/test.5678">10.1234/test.5678</a></p>'
@@ -94,27 +95,43 @@ def mock_feed_entry():
     entry.link = "https://eve.gd/2025/03/20/test-post/"
     entry.published_parsed = struct_time((2025, 3, 20, 10, 0, 0, 3, 79, 0))
     entry.updated_parsed = struct_time((2025, 3, 20, 10, 0, 0, 3, 79, 0))
-    entry.content = [{"value": "<p>Test content with <strong>bold</strong>.</p>", "type": "text/html"}]
+    entry.content = [
+        {
+            "value": "<p>Test content with <strong>bold</strong>.</p>",
+            "type": "text/html",
+        }
+    ]
     entry.summary = "Test content with bold."
     entry.author = "Test Author"
     entry.tags = [{"term": "python"}, {"term": "testing"}]
     entry.media_thumbnail = None
     entry.media_content = None
     entry.enclosures = []
-    entry.links = [{"rel": "alternate", "type": "text/html", "href": "https://eve.gd/2025/03/20/test-post/"}]
+    entry.links = [
+        {
+            "rel": "alternate",
+            "type": "text/html",
+            "href": "https://eve.gd/2025/03/20/test-post/",
+        }
+    ]
     return entry
 
 
-def make_mock_response(status_code=200, json_data=None, headers=None, content=b""):
+def make_mock_response(
+    status_code=200, json_data=None, headers=None, content=b""
+):
     """Helper to create a mock requests.Response."""
     resp = MagicMock()
     resp.status_code = status_code
     resp.headers = headers or {}
     resp.json.return_value = json_data or {}
     resp.content = content
-    resp.text = content.decode() if isinstance(content, bytes) else str(content)
+    resp.text = (
+        content.decode() if isinstance(content, bytes) else str(content)
+    )
     resp.raise_for_status.return_value = None
     if status_code >= 400:
         from requests.exceptions import HTTPError
+
         resp.raise_for_status.side_effect = HTTPError(response=resp)
     return resp

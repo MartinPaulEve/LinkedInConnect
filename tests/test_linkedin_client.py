@@ -1,14 +1,12 @@
 """Tests for linkedin_client module."""
 
 import os
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
-from linkedin_client import LinkedInClient, LINKEDIN_API_BASE, LINKEDIN_VERSION
+from linkedin_client import LINKEDIN_VERSION, LinkedInClient
 from tests.conftest import make_mock_response
 
 
@@ -40,7 +38,9 @@ class TestClientInit:
             LinkedInClient(access_token="token")
 
     def test_default_headers(self):
-        client = LinkedInClient(access_token="tok", person_urn="urn:li:person:x")
+        client = LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:x"
+        )
         headers = client._default_headers()
         assert headers["Authorization"] == "Bearer tok"
         assert headers["LinkedIn-Version"] == LINKEDIN_VERSION
@@ -49,7 +49,9 @@ class TestClientInit:
 
 class TestCreatePost:
     def _make_client(self):
-        return LinkedInClient(access_token="tok", person_urn="urn:li:person:me")
+        return LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:me"
+        )
 
     @patch.object(requests.Session, "post")
     def test_text_only_post(self, mock_post):
@@ -91,14 +93,17 @@ class TestCreatePost:
             headers={"x-restli-id": "urn:li:share:333"},
         )
         client = self._make_client()
-        urn = client.create_post(
+        client.create_post(
             text="Article post",
             article_url="https://eve.gd/post/",
             article_title="My Article",
             article_description="About things",
         )
         called_json = mock_post.call_args[1]["json"]
-        assert called_json["content"]["article"]["source"] == "https://eve.gd/post/"
+        assert (
+            called_json["content"]["article"]["source"]
+            == "https://eve.gd/post/"
+        )
         assert called_json["content"]["article"]["title"] == "My Article"
 
     @patch.object(requests.Session, "post")
@@ -120,7 +125,8 @@ class TestCreatePost:
     @patch.object(requests.Session, "post")
     def test_default_alt_text(self, mock_post):
         mock_post.return_value = make_mock_response(
-            status_code=201, headers={"x-restli-id": "urn:x"},
+            status_code=201,
+            headers={"x-restli-id": "urn:x"},
         )
         client = self._make_client()
         client.create_post(text="x", image_urn="urn:li:image:x")
@@ -137,7 +143,9 @@ class TestCreatePost:
 
 class TestUploadImage:
     def _make_client(self):
-        return LinkedInClient(access_token="tok", person_urn="urn:li:person:me")
+        return LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:me"
+        )
 
     @patch("linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
@@ -200,7 +208,9 @@ class TestUploadImage:
 
 class TestDownloadImage:
     def _make_client(self):
-        return LinkedInClient(access_token="tok", person_urn="urn:li:person:me")
+        return LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:me"
+        )
 
     @patch("linkedin_client.requests.get")
     def test_extension_from_url(self, mock_get):

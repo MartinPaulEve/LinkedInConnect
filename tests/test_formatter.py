@@ -1,7 +1,5 @@
 """Tests for formatter module."""
 
-import pytest
-
 from formatter import (
     MAX_LINKEDIN_POST_LENGTH,
     _html_to_linkedin_text,
@@ -20,7 +18,9 @@ class TestFormatForLinkedin:
         )
         assert "My Post" in result
         assert "Hello world" in result
-        assert "Read the full post: https://eve.gd/2025/01/01/my-post/" in result
+        assert (
+            "Read the full post: https://eve.gd/2025/01/01/my-post/" in result
+        )
 
     def test_includes_doi(self):
         result = format_for_linkedin(
@@ -110,7 +110,9 @@ class TestHtmlToLinkedinText:
         assert "Hello world" in result
 
     def test_headings_uppercased_h1_h2(self):
-        result = _html_to_linkedin_text("<h1>Big Title</h1><h3>Small Title</h3>")
+        result = _html_to_linkedin_text(
+            "<h1>Big Title</h1><h3>Small Title</h3>"
+        )
         assert "BIG TITLE" in result
         assert "Small Title" in result
         # h3 should NOT be uppercased
@@ -122,16 +124,22 @@ class TestHtmlToLinkedinText:
         assert "- Two" in result
 
     def test_ordered_list(self):
-        result = _html_to_linkedin_text("<ol><li>First</li><li>Second</li></ol>")
+        result = _html_to_linkedin_text(
+            "<ol><li>First</li><li>Second</li></ol>"
+        )
         assert "1. First" in result
         assert "2. Second" in result
 
     def test_blockquote(self):
-        result = _html_to_linkedin_text("<blockquote>Famous words</blockquote>")
+        result = _html_to_linkedin_text(
+            "<blockquote>Famous words</blockquote>"
+        )
         assert '"Famous words"' in result
 
     def test_link_includes_url(self):
-        result = _html_to_linkedin_text('<a href="https://example.com">Click here</a>')
+        result = _html_to_linkedin_text(
+            '<a href="https://example.com">Click here</a>'
+        )
         assert "Click here" in result
         assert "https://example.com" in result
 
@@ -158,7 +166,10 @@ class TestHtmlToLinkedinText:
         assert "code line 2" in result
 
     def test_strips_script_and_style(self):
-        html = "<p>Good</p><script>evil()</script><style>.bad{}</style><p>Also good</p>"
+        html = (
+            "<p>Good</p><script>evil()</script>"
+            "<style>.bad{}</style><p>Also good</p>"
+        )
         result = _html_to_linkedin_text(html)
         assert "Good" in result
         assert "Also good" in result
@@ -166,7 +177,11 @@ class TestHtmlToLinkedinText:
         assert ".bad" not in result
 
     def test_figure_with_figcaption(self):
-        html = '<figure><img src="x.jpg" /><figcaption>Photo credit: Me</figcaption></figure>'
+        html = (
+            '<figure><img src="x.jpg" />'
+            "<figcaption>Photo credit: Me</figcaption>"
+            "</figure>"
+        )
         result = _html_to_linkedin_text(html)
         assert "[Photo credit: Me]" in result
 

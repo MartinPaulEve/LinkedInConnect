@@ -2,8 +2,7 @@
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, date, timezone
-from typing import Optional
+from datetime import date, datetime, timezone
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -18,15 +17,16 @@ FEED_URL = "https://eve.gd/feed/feed.atom"
 @dataclass
 class BlogPost:
     """A parsed blog post from the Atom feed."""
+
     id: str
     title: str
     url: str
     published: datetime
-    updated: Optional[datetime]
+    updated: datetime | None
     content_html: str
     summary: str
-    featured_image_url: Optional[str]
-    doi: Optional[str]
+    featured_image_url: str | None
+    doi: str | None
     author: str = ""
     tags: list[str] = field(default_factory=list)
 
@@ -53,14 +53,16 @@ def parse_feed(feed_url: str = FEED_URL) -> list[BlogPost]:
     return posts
 
 
-def _parse_entry(entry) -> Optional[BlogPost]:
+def _parse_entry(entry) -> BlogPost | None:
     """Parse a single feed entry into a BlogPost."""
     entry_id = getattr(entry, "id", "") or getattr(entry, "link", "")
     title = getattr(entry, "title", "Untitled")
     url = getattr(entry, "link", "")
 
     # Parse dates
-    published = _parse_date(entry, "published_parsed") or _parse_date(entry, "updated_parsed")
+    published = _parse_date(entry, "published_parsed") or _parse_date(
+        entry, "updated_parsed"
+    )
     updated = _parse_date(entry, "updated_parsed")
 
     if not published:
@@ -116,23 +118,27 @@ def _parse_entry(entry) -> Optional[BlogPost]:
     )
 
 
-def _parse_date(entry, attr: str) -> Optional[datetime]:
+def _parse_date(entry, attr: str) -> datetime | None:
     """Parse a date from a feed entry attribute."""
     parsed = getattr(entry, attr, None)
     if parsed:
         from time import mktime
+
         return datetime.fromtimestamp(mktime(parsed), tz=timezone.utc)
     return None
 
 
-def _extract_featured_image(entry, content_html: str) -> Optional[str]:
+def _extract_featured_image(entry, content_html: str) -> str | None:
     """Extract the featured image URL from entry metadata or content."""
     # Check for media:thumbnail or media:content
     if hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
         return entry.media_thumbnail[0].get("url")
     if hasattr(entry, "media_content") and entry.media_content:
         for media in entry.media_content:
-            if media.get("medium") == "image" or "image" in media.get("type", ""):
+            is_image = media.get("medium") == "image" or "image" in media.get(
+                "type", ""
+            )
+            if is_image:
                 return media.get("url")
 
     # Check for enclosures
@@ -144,7 +150,10 @@ def _extract_featured_image(entry, content_html: str) -> Optional[str]:
     # Check entry links for image type
     if hasattr(entry, "links"):
         for link in entry.links:
-            if link.get("rel") == "enclosure" and "image" in link.get("type", ""):
+            is_img_enc = link.get(
+                "rel"
+            ) == "enclosure" and "image" in link.get("type", "")
+            if is_img_enc:
                 return link.get("href")
 
     # Fall back to first image in content
@@ -157,7 +166,7 @@ def _extract_featured_image(entry, content_html: str) -> Optional[str]:
     return None
 
 
-def _extract_doi(content_html: str, title: str = "") -> Optional[str]:
+def _extract_doi(content_html: str, title: str = "") -> str | None:
     """Extract a DOI from the content HTML."""
     # Common DOI patterns
     doi_patterns = [
@@ -190,11 +199,15 @@ def get_todays_posts(feed_url: str = FEED_URL) -> list[BlogPost]:
     """Get only posts published today."""
     today = date.today()
     posts = [p for p in parse_feed(feed_url) if p.published_date == today]
-    log.info("todays_posts_filtered", today=today.isoformat(), count=len(posts))
+    log.info(
+        "todays_posts_filtered",
+        today=today.isoformat(),
+        count=len(posts),
+    )
     return posts
 
 
-def get_post_by_url(url: str, feed_url: str = FEED_URL) -> Optional[BlogPost]:
+def get_post_by_url(url: str, feed_url: str = FEED_URL) -> BlogPost | None:
     """Find a specific post by its URL."""
     log.info("searching_post_by_url", target_url=url)
     for post in parse_feed(feed_url):

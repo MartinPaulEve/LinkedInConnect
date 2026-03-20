@@ -4,8 +4,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from sync_tracker import SyncTracker
 
 
@@ -94,11 +92,15 @@ class TestRemoveRecord:
         tracker = SyncTracker(state_file=populated_state_file)
         result = tracker.remove_record("https://eve.gd/2025/01/01/old-post/")
         assert result is True
-        assert tracker.is_synced("https://eve.gd/2025/01/01/old-post/") is False
+        assert (
+            tracker.is_synced("https://eve.gd/2025/01/01/old-post/") is False
+        )
 
         # Verify persistence
         tracker2 = SyncTracker(state_file=populated_state_file)
-        assert tracker2.is_synced("https://eve.gd/2025/01/01/old-post/") is False
+        assert (
+            tracker2.is_synced("https://eve.gd/2025/01/01/old-post/") is False
+        )
 
     def test_remove_nonexistent(self, tmp_state_file):
         tracker = SyncTracker(state_file=tmp_state_file)

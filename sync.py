@@ -7,7 +7,7 @@ import os
 import click
 from dotenv import load_dotenv
 
-from feed_parser import get_todays_posts, get_post_by_url, FEED_URL
+from feed_parser import FEED_URL, get_post_by_url, get_todays_posts
 from formatter import format_for_linkedin
 from linkedin_client import LinkedInClient
 from logging_config import configure_logging, get_logger
@@ -16,7 +16,9 @@ from sync_tracker import SyncTracker
 log = get_logger(__name__)
 
 
-def sync_post(post, client: LinkedInClient, tracker: SyncTracker, dry_run: bool = False) -> bool:
+def sync_post(
+    post, client: LinkedInClient, tracker: SyncTracker, dry_run: bool = False
+) -> bool:
     """Sync a single blog post to LinkedIn. Returns True on success."""
     log.info(
         "sync_post_start",
@@ -51,7 +53,11 @@ def sync_post(post, client: LinkedInClient, tracker: SyncTracker, dry_run: bool 
         try:
             image_urn = client.upload_image(image_url=post.featured_image_url)
         except Exception as e:
-            log.warning("image_upload_failed", url=post.featured_image_url, error=str(e))
+            log.warning(
+                "image_upload_failed",
+                url=post.featured_image_url,
+                error=str(e),
+            )
 
     # Create the LinkedIn post
     try:
@@ -60,7 +66,9 @@ def sync_post(post, client: LinkedInClient, tracker: SyncTracker, dry_run: bool 
             image_urn=image_urn,
             image_alt_text=f"Featured image for: {post.title}",
         )
-        log.info("post_synced_successfully", title=post.title, linkedin_urn=post_urn)
+        log.info(
+            "post_synced_successfully", title=post.title, linkedin_urn=post_urn
+        )
     except Exception as e:
         log.error("post_creation_failed", title=post.title, error=str(e))
         return False
@@ -84,21 +92,47 @@ def _make_client(dry_run: bool) -> LinkedInClient | None:
         return LinkedInClient()
     except ValueError as e:
         log.error("client_creation_failed", error=str(e))
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @click.group(invoke_without_command=True)
-@click.option("--feed-url", default=FEED_URL, show_default=True, help="Atom feed URL.")
-@click.option("--state-file", default=None, help="Path to sync state JSON file.")
-@click.option("--dry-run", is_flag=True, help="Show what would be posted without actually posting.")
-@click.option("--force", is_flag=True, help="Force re-sync even if already synced.")
-@click.option("--json-logs", is_flag=True, help="Output structured JSON logs instead of human-readable logs.")
-@click.option("--verbose", "-v", is_flag=True, help="Enable debug-level logging.")
+@click.option(
+    "--feed-url",
+    default=FEED_URL,
+    show_default=True,
+    help="Atom feed URL.",
+)
+@click.option(
+    "--state-file",
+    default=None,
+    help="Path to sync state JSON file.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview without actually posting.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force re-sync even if already synced.",
+)
+@click.option(
+    "--json-logs",
+    is_flag=True,
+    help="Output structured JSON logs.",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable debug-level logging.",
+)
 @click.pass_context
 def cli(ctx, feed_url, state_file, dry_run, force, json_logs, verbose):
     """Sync blog posts from eve.gd to LinkedIn.
 
-    With no subcommand, syncs all posts published today that haven't been synced yet.
+    With no subcommand, syncs all of today's unsynced posts.
     """
     configure_logging(
         json_logs=json_logs,
