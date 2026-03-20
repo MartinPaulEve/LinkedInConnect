@@ -3,8 +3,11 @@
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 import feedparser
+import markdown
+import yaml
 from bs4 import BeautifulSoup
 
 from logging_config import get_logger
@@ -216,3 +219,118 @@ def get_post_by_url(url: str, feed_url: str = FEED_URL) -> BlogPost | None:
             return post
     log.warning("post_not_found", target_url=url)
     return None
+
+
+def parse_markdown_file(file_path: str) -> BlogPost:
+    """Parse a local markdown file with YAML front matter into a BlogPost.
+
+    Expected front matter fields:
+        title (required), url (required), date, tags, image, doi, author
+    """
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Markdown file not found: {file_path}")
+
+    text = path.read_text(encoding="utf-8")
+    front_matter, body = _split_front_matter(text)
+
+    title = front_matter.get("title")
+    url = front_matter.get("url") or front_matter.get("permalink")
+    if not title or not url:
+        raise ValueError(
+            f"Markdown file must have 'title' and 'url' in front matter: "
+            f"{file_path}"
+        )
+
+    # Parse date
+    raw_date = front_matter.get("date")
+    if isinstance(raw_date, datetime):
+        published = raw_date.replace(tzinfo=timezone.utc)
+    elif isinstance(raw_date, date):
+        published = datetime(
+            raw_date.year, raw_date.month, raw_date.day, tzinfo=timezone.utc
+        )
+    elif isinstance(raw_date, str):
+        published = _parse_front_matter_date(raw_date)
+    else:
+        published = datetime.now(tz=timezone.utc)
+
+    # Convert markdown body to HTML
+    content_html = markdown.markdown(
+        body, extensions=["extra", "codehilite", "toc"]
+    )
+
+    # Extract tags
+    raw_tags = front_matter.get("tags", [])
+    if isinstance(raw_tags, str):
+        raw_tags = [t.strip() for t in raw_tags.split(",")]
+    tags = [t for t in raw_tags if t]
+
+    # Featured image
+    featured_image_url = front_matter.get("image") or front_matter.get(
+        "featured_image"
+    )
+
+    # DOI - check front matter first, then content
+    doi_value = front_matter.get("doi") or _extract_doi(content_html, title)
+
+    summary = _html_to_text_summary(content_html, max_length=300)
+
+    log.info(
+        "markdown_file_parsed",
+        file=file_path,
+        title=title,
+        url=url,
+        has_image=bool(featured_image_url),
+        has_doi=bool(doi_value),
+        tag_count=len(tags),
+    )
+
+    return BlogPost(
+        id=url,
+        title=title,
+        url=url,
+        published=published,
+        updated=None,
+        content_html=content_html,
+        summary=summary,
+        featured_image_url=featured_image_url,
+        doi=doi_value,
+        author=front_matter.get("author", ""),
+        tags=tags,
+    )
+
+
+def _split_front_matter(text: str) -> tuple[dict, str]:
+    """Split YAML front matter from markdown body."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", text, re.DOTALL)
+    if not match:
+        return {}, text
+
+    try:
+        front_matter = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as e:
+        log.warning("front_matter_parse_error", error=str(e))
+        front_matter = {}
+
+    return front_matter, match.group(2)
+
+
+def _parse_front_matter_date(date_str: str) -> datetime:
+    """Parse common date formats from front matter."""
+    formats = [
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            continue
+    log.warning("unparseable_date", date_str=date_str)
+    return datetime.now(tz=timezone.utc)

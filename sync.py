@@ -7,7 +7,12 @@ import os
 import click
 from dotenv import load_dotenv
 
-from feed_parser import FEED_URL, get_post_by_url, get_todays_posts
+from feed_parser import (
+    FEED_URL,
+    get_post_by_url,
+    get_todays_posts,
+    parse_markdown_file,
+)
 from formatter import format_for_linkedin
 from linkedin_client import LinkedInClient
 from logging_config import configure_logging, get_logger
@@ -208,6 +213,33 @@ def post(ctx, url):
         log.error("post_not_found_in_feed", url=url)
         raise SystemExit(1)
 
+    sync_post(found_post, client, tracker, dry_run=dry_run)
+
+
+@cli.command()
+@click.argument("path", type=click.Path(exists=True))
+@click.pass_context
+def file(ctx, path):
+    """Sync a post from a local markdown file."""
+    dry_run = ctx.obj["dry_run"]
+    force = ctx.obj["force"]
+    tracker = ctx.obj["tracker"]
+
+    try:
+        found_post = parse_markdown_file(path)
+    except (FileNotFoundError, ValueError) as e:
+        log.error("markdown_parse_failed", error=str(e))
+        raise SystemExit(1) from e
+
+    if tracker.is_synced(found_post.url) and not force:
+        log.info("post_already_synced", url=found_post.url)
+        return
+
+    if force and tracker.is_synced(found_post.url):
+        log.info("force_resync", url=found_post.url)
+        tracker.remove_record(found_post.url)
+
+    client = _make_client(dry_run)
     sync_post(found_post, client, tracker, dry_run=dry_run)
 
 
