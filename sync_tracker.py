@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 DEFAULT_STATE_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "sync_state.json"
@@ -31,12 +34,16 @@ class SyncTracker:
             "SYNC_STATE_FILE", DEFAULT_STATE_FILE
         )
         self._state = self._load()
+        log.info("sync_tracker_initialized", state_file=self.state_file, synced_count=len(self.get_synced_posts()))
 
     def _load(self) -> dict:
         """Load state from the JSON file."""
         if Path(self.state_file).exists():
             with open(self.state_file, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            log.debug("state_loaded", path=self.state_file)
+            return data
+        log.debug("state_file_not_found_using_empty", path=self.state_file)
         return {"synced_posts": {}}
 
     def _save(self):
@@ -44,10 +51,13 @@ class SyncTracker:
         Path(self.state_file).parent.mkdir(parents=True, exist_ok=True)
         with open(self.state_file, "w") as f:
             json.dump(self._state, f, indent=2)
+        log.debug("state_saved", path=self.state_file)
 
     def is_synced(self, post_url: str) -> bool:
         """Check if a post has already been synced."""
-        return post_url in self._state.get("synced_posts", {})
+        synced = post_url in self._state.get("synced_posts", {})
+        log.debug("is_synced_check", post_url=post_url, synced=synced)
+        return synced
 
     def mark_synced(
         self,
@@ -66,6 +76,7 @@ class SyncTracker:
         )
         self._state.setdefault("synced_posts", {})[post_url] = asdict(record)
         self._save()
+        log.info("post_marked_synced", post_url=post_url, linkedin_urn=linkedin_post_urn)
 
     def get_synced_posts(self) -> dict:
         """Return all synced post records."""
@@ -80,5 +91,7 @@ class SyncTracker:
         if post_url in self._state.get("synced_posts", {}):
             del self._state["synced_posts"][post_url]
             self._save()
+            log.info("sync_record_removed", post_url=post_url)
             return True
+        log.warning("sync_record_not_found", post_url=post_url)
         return False

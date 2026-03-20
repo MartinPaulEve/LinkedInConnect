@@ -54,7 +54,7 @@ cp .env.example .env
 Edit `.env` and fill in your credentials:
 
 ```env
-# LinkedIn OAuth2 credentials (from Developer Portal → Auth tab)
+# LinkedIn OAuth2 credentials (from Developer Portal -> Auth tab)
 LINKEDIN_CLIENT_ID="your_client_id_here"
 LINKEDIN_CLIENT_SECRET="your_client_secret_here"
 
@@ -146,9 +146,79 @@ uv run linkedin-sync list
 uv run linkedin-sync --feed-url "https://eve.gd/feed/feed.atom"
 ```
 
+## Logging
+
+The tool uses structured logging via **structlog** with **rich** for human-readable output by default.
+
+### Human-readable logs (default)
+
+```bash
+uv run linkedin-sync --dry-run
+```
+
+Produces colourful, formatted console output.
+
+### JSON structured logs
+
+```bash
+uv run linkedin-sync --json-logs --dry-run
+```
+
+Produces one JSON object per line on stderr — useful for piping to log aggregators (e.g., `jq`, Datadog, CloudWatch).
+
+### Verbose / debug logging
+
+```bash
+uv run linkedin-sync -v --dry-run
+```
+
+Enables `DEBUG`-level output. Combine with `--json-logs` as needed.
+
+## Docker
+
+You can run the tool in a Docker container using Docker Compose. This avoids needing Python or uv installed on your host.
+
+### Build the image
+
+```bash
+docker compose build
+```
+
+### Run commands
+
+The container's entrypoint is `linkedin-sync`, so you pass subcommands and flags directly:
+
+```bash
+# Sync today's posts
+docker compose run --rm linkedin-sync
+
+# Dry run
+docker compose run --rm linkedin-sync --dry-run
+
+# Sync a specific post
+docker compose run --rm linkedin-sync post "https://eve.gd/2025/03/17/some-post/"
+
+# Force re-sync with JSON logs
+docker compose run --rm linkedin-sync --json-logs --force post "https://eve.gd/2025/03/17/some-post/"
+
+# List synced posts
+docker compose run --rm linkedin-sync list
+
+# Verbose output
+docker compose run --rm linkedin-sync -v --dry-run
+```
+
+The `docker-compose.yml` mounts `sync_state.json` from the host so that sync state persists between container runs. It also reads your `.env` file for credentials.
+
+### Cron with Docker
+
+```cron
+0 12 * * * cd /path/to/LinkedInConnect && docker compose run --rm linkedin-sync >> sync.log 2>&1
+```
+
 ## Running After Publishing a Blog Post
 
-You can run `sync.py` manually after publishing a post, or set up a simple automation:
+You can run `linkedin-sync` manually after publishing a post, or set up a simple automation:
 
 ### Option A: Manual (run after publishing)
 
@@ -172,6 +242,15 @@ If your blog has a post-publish hook (e.g., Hugo, Jekyll, WordPress), call the s
 # post-publish.sh
 cd /path/to/LinkedInConnect
 uv run linkedin-sync
+```
+
+## Running Tests
+
+```bash
+uv sync                   # install all deps including dev group
+uv run pytest             # run the test suite
+uv run pytest -v          # verbose output
+uv run pytest --cov       # with coverage report
 ```
 
 ## How It Works

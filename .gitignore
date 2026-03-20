@@ -34,3 +34,6 @@ Thumbs.db
 
 # Temp files from image downloads
 *.tmp
+
+# uv
+uv.lock

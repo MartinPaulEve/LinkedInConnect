@@ -16,6 +16,9 @@ LinkedIn, preserving structure with line breaks and bullet points.
 import re
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 # LinkedIn has a ~3000 character limit for post commentary
 MAX_LINKEDIN_POST_LENGTH = 3000
@@ -42,6 +45,8 @@ def format_for_linkedin(
     - A footer with the original post link and DOI
     - Relevant hashtags
     """
+    log.debug("formatting_post", title=title, html_length=len(content_html))
+
     # Convert HTML to structured text
     body_text = _html_to_linkedin_text(content_html)
 
@@ -76,9 +81,16 @@ def format_for_linkedin(
 
     available_length = max_length - len(footer) - 10  # 10 chars buffer
     if len(full_text) > available_length:
+        log.info(
+            "truncating_post",
+            original_length=len(full_text),
+            max_length=available_length,
+        )
         full_text = _truncate_text(full_text, available_length)
 
-    return full_text + "\n" + footer
+    result = full_text + "\n" + footer
+    log.info("post_formatted", total_length=len(result), truncated=len(full_text) < len("\n".join(parts)))
+    return result
 
 
 def _html_to_linkedin_text(html: str) -> str:

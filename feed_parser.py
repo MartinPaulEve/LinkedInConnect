@@ -8,6 +8,9 @@ from typing import Optional
 import feedparser
 from bs4 import BeautifulSoup
 
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 FEED_URL = "https://eve.gd/feed/feed.atom"
 
@@ -34,14 +37,19 @@ class BlogPost:
 
 def parse_feed(feed_url: str = FEED_URL) -> list[BlogPost]:
     """Parse the Atom feed and return a list of BlogPost objects."""
+    log.info("parsing_feed", feed_url=feed_url)
     feed = feedparser.parse(feed_url)
     posts = []
+
+    if feed.bozo:
+        log.warning("feed_parse_warning", error=str(feed.bozo_exception))
 
     for entry in feed.entries:
         post = _parse_entry(entry)
         if post:
             posts.append(post)
 
+    log.info("feed_parsed", post_count=len(posts))
     return posts
 
 
@@ -56,6 +64,7 @@ def _parse_entry(entry) -> Optional[BlogPost]:
     updated = _parse_date(entry, "updated_parsed")
 
     if not published:
+        log.warning("skipping_entry_no_date", entry_id=entry_id, title=title)
         return None
 
     # Get content - prefer full content over summary
@@ -82,6 +91,15 @@ def _parse_entry(entry) -> Optional[BlogPost]:
     author = ""
     if hasattr(entry, "author"):
         author = entry.author
+
+    log.debug(
+        "entry_parsed",
+        title=title,
+        url=url,
+        has_image=bool(featured_image_url),
+        has_doi=bool(doi),
+        tag_count=len(tags),
+    )
 
     return BlogPost(
         id=entry_id,
@@ -171,12 +189,17 @@ def _html_to_text_summary(html: str, max_length: int = 300) -> str:
 def get_todays_posts(feed_url: str = FEED_URL) -> list[BlogPost]:
     """Get only posts published today."""
     today = date.today()
-    return [p for p in parse_feed(feed_url) if p.published_date == today]
+    posts = [p for p in parse_feed(feed_url) if p.published_date == today]
+    log.info("todays_posts_filtered", today=today.isoformat(), count=len(posts))
+    return posts
 
 
 def get_post_by_url(url: str, feed_url: str = FEED_URL) -> Optional[BlogPost]:
     """Find a specific post by its URL."""
+    log.info("searching_post_by_url", target_url=url)
     for post in parse_feed(feed_url):
         if post.url == url or post.id == url:
+            log.info("post_found", title=post.title)
             return post
+    log.warning("post_not_found", target_url=url)
     return None

@@ -1,11 +1,15 @@
 """LinkedIn API client for posting content and uploading images."""
 
 import os
-import requests
 import tempfile
 import urllib.parse
 from pathlib import Path
 
+import requests
+
+from logging_config import get_logger
+
+log = get_logger(__name__)
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/rest"
 LINKEDIN_VERSION = "202602"
@@ -30,6 +34,7 @@ class LinkedInClient:
             )
         self._session = requests.Session()
         self._session.headers.update(self._default_headers())
+        log.info("linkedin_client_initialized", person_urn=self.person_urn)
 
     def _default_headers(self) -> dict:
         return {
@@ -40,12 +45,15 @@ class LinkedInClient:
 
     def get_profile(self) -> dict:
         """Fetch the authenticated user's profile to verify credentials."""
+        log.debug("fetching_profile")
         resp = self._session.get(
             f"{LINKEDIN_API_BASE}/me",
             headers={"Content-Type": "application/json"},
         )
         resp.raise_for_status()
-        return resp.json()
+        profile = resp.json()
+        log.info("profile_fetched", profile_id=profile.get("id"))
+        return profile
 
     def upload_image(self, image_path: str = None, image_url: str = None) -> str:
         """Upload an image to LinkedIn and return the image URN.
@@ -53,10 +61,14 @@ class LinkedInClient:
         Provide either a local file path or a URL to download from.
         """
         if image_url and not image_path:
+            log.info("downloading_image", url=image_url)
             image_path = self._download_image(image_url)
 
         if not image_path or not Path(image_path).exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
+
+        file_size = Path(image_path).stat().st_size
+        log.info("uploading_image", path=image_path, size_bytes=file_size)
 
         # Step 1: Initialize upload
         init_resp = self._session.post(
@@ -72,6 +84,7 @@ class LinkedInClient:
         init_data = init_resp.json()
         upload_url = init_data["value"]["uploadUrl"]
         image_urn = init_data["value"]["image"]
+        log.debug("image_upload_initialized", image_urn=image_urn)
 
         # Step 2: Upload binary
         with open(image_path, "rb") as f:
@@ -86,6 +99,7 @@ class LinkedInClient:
             data=image_data,
         )
         upload_resp.raise_for_status()
+        log.info("image_uploaded", image_urn=image_urn, size_bytes=len(image_data))
 
         return image_urn
 
@@ -108,6 +122,13 @@ class LinkedInClient:
             article_title: Title for the article link.
             article_description: Description for the article link.
         """
+        log.info(
+            "creating_post",
+            text_length=len(text),
+            has_image=bool(image_urn),
+            has_article=bool(article_url),
+        )
+
         body = {
             "author": self.person_urn,
             "commentary": text,
@@ -145,6 +166,7 @@ class LinkedInClient:
         resp.raise_for_status()
 
         post_urn = resp.headers.get("x-restli-id", "")
+        log.info("post_created", post_urn=post_urn)
         return post_urn
 
     def _download_image(self, url: str) -> str:
@@ -172,4 +194,5 @@ class LinkedInClient:
         for chunk in resp.iter_content(chunk_size=8192):
             tmp.write(chunk)
         tmp.close()
+        log.debug("image_downloaded", path=tmp.name, content_type=content_type)
         return tmp.name

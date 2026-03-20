@@ -1,0 +1,8 @@
+services:
+  linkedin-sync:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      # Persist sync state between runs
+      - ./sync_state.json:/app/sync_state.json
