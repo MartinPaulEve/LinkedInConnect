@@ -32,11 +32,22 @@ dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=4.0.0",
     "ruff>=0.8.0",
+    "commitizen>=4.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+version_files = [
+    "pyproject.toml:^version",
+]
+tag_format = "v$version"
+changelog_file = "CHANGELOG.md"
+update_changelog_on_bump = true
 
 [tool.ruff]
 line-length = 79
