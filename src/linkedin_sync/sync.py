@@ -9,16 +9,16 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 
-from feed_parser import (
+from linkedin_sync.feed_parser import (
     FEED_URL,
     get_post_by_url,
     get_todays_posts,
     parse_markdown_file,
 )
-from formatter import format_for_linkedin
-from logging_config import configure_logging, get_logger
-from summarizer import summarize_post, summarize_post_short
-from sync_tracker import SyncTracker
+from linkedin_sync.formatter import format_for_linkedin
+from linkedin_sync.logging_config import configure_logging, get_logger
+from linkedin_sync.summarizer import summarize_post, summarize_post_short
+from linkedin_sync.sync_tracker import SyncTracker
 
 log = get_logger(__name__)
 
@@ -252,7 +252,7 @@ def _make_linkedin_client(dry_run: bool):
     if dry_run and not os.environ.get("LINKEDIN_ACCESS_TOKEN"):
         return None
     try:
-        from linkedin_client import LinkedInClient
+        from linkedin_sync.linkedin_client import LinkedInClient
 
         return LinkedInClient()
     except ValueError as e:
@@ -265,7 +265,7 @@ def _make_bluesky_client(dry_run: bool):
     if dry_run and not os.environ.get("BLUESKY_HANDLE"):
         return None
     try:
-        from bluesky_client import BlueskyClient
+        from linkedin_sync.bluesky_client import BlueskyClient
 
         return BlueskyClient()
     except ValueError as e:
@@ -278,7 +278,7 @@ def _make_mastodon_client(dry_run: bool):
     if dry_run and not os.environ.get("MASTODON_ACCESS_TOKEN"):
         return None
     try:
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         return MastodonClient()
     except ValueError as e:
@@ -557,7 +557,7 @@ def list_synced(ctx):
 @click.pass_context
 def verify(ctx):
     """Verify API credentials for all configured platforms."""
-    from linkedin_client import LinkedInClient
+    from linkedin_sync.linkedin_client import LinkedInClient
 
     results = {}
 
@@ -572,7 +572,7 @@ def verify(ctx):
 
     # Bluesky
     try:
-        from bluesky_client import BlueskyClient
+        from linkedin_sync.bluesky_client import BlueskyClient
 
         bs = BlueskyClient()
         results["bluesky"] = f"OK ({bs.handle})"
@@ -581,7 +581,7 @@ def verify(ctx):
 
     # Mastodon
     try:
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         MastodonClient()
         results["mastodon"] = "OK"
@@ -601,7 +601,7 @@ def image_check(ctx, path):
     Finds all locally-referenced images, checks their dimensions,
     and resizes any that exceed 1200x630 (preserving aspect ratio).
     """
-    from image_checker import extract_image_paths, resize_image
+    from linkedin_sync.image_checker import extract_image_paths, resize_image
 
     dry_run = ctx.obj["dry_run"]
 

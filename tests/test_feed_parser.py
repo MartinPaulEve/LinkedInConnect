@@ -5,7 +5,7 @@ from time import struct_time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from feed_parser import (
+from linkedin_sync.feed_parser import (
     BlogPost,
     _extract_doi,
     _extract_featured_image,
@@ -237,7 +237,7 @@ class TestParseEntry:
 
 
 class TestParseFeed:
-    @patch("feed_parser.feedparser.parse")
+    @patch("linkedin_sync.feed_parser.feedparser.parse")
     def test_returns_posts(self, mock_parse, mock_feed_entry):
         mock_parse.return_value = MagicMock(
             entries=[mock_feed_entry], bozo=False
@@ -246,13 +246,13 @@ class TestParseFeed:
         assert len(posts) == 1
         assert posts[0].title == "Test Post Title"
 
-    @patch("feed_parser.feedparser.parse")
+    @patch("linkedin_sync.feed_parser.feedparser.parse")
     def test_empty_feed(self, mock_parse):
         mock_parse.return_value = MagicMock(entries=[], bozo=False)
         posts = parse_feed("https://example.com/feed.atom")
         assert posts == []
 
-    @patch("feed_parser.feedparser.parse")
+    @patch("linkedin_sync.feed_parser.feedparser.parse")
     def test_skips_entries_without_dates(self, mock_parse):
         bad_entry = SimpleNamespace(
             id="x",
@@ -267,8 +267,8 @@ class TestParseFeed:
 
 
 class TestGetTodaysPosts:
-    @patch("feed_parser.parse_feed")
-    @patch("feed_parser.date")
+    @patch("linkedin_sync.feed_parser.parse_feed")
+    @patch("linkedin_sync.feed_parser.date")
     def test_filters_to_today(self, mock_date, mock_parse):
         mock_date.today.return_value = date(2025, 3, 17)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
@@ -303,7 +303,7 @@ class TestGetTodaysPosts:
 
 
 class TestGetPostByUrl:
-    @patch("feed_parser.parse_feed")
+    @patch("linkedin_sync.feed_parser.parse_feed")
     def test_finds_by_url(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
         result = get_post_by_url(
@@ -312,7 +312,7 @@ class TestGetPostByUrl:
         assert result is not None
         assert result.title == sample_blog_post.title
 
-    @patch("feed_parser.parse_feed")
+    @patch("linkedin_sync.feed_parser.parse_feed")
     def test_finds_by_id(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
         result = get_post_by_url(
@@ -320,7 +320,7 @@ class TestGetPostByUrl:
         )
         assert result is not None
 
-    @patch("feed_parser.parse_feed")
+    @patch("linkedin_sync.feed_parser.parse_feed")
     def test_returns_none_when_not_found(self, mock_parse, sample_blog_post):
         mock_parse.return_value = [sample_blog_post]
         result = get_post_by_url(

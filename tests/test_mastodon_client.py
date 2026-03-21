@@ -10,7 +10,7 @@ class TestMastodonClientInit:
         monkeypatch.delenv("MASTODON_INSTANCE_URL", raising=False)
         monkeypatch.delenv("MASTODON_ACCESS_TOKEN", raising=False)
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         with pytest.raises(ValueError, match="instance URL"):
             MastodonClient()
@@ -19,17 +19,17 @@ class TestMastodonClientInit:
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.delenv("MASTODON_ACCESS_TOKEN", raising=False)
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         with pytest.raises(ValueError, match="access token"):
             MastodonClient()
 
-    @patch("mastodon_client.Mastodon")
+    @patch("linkedin_sync.mastodon_client.Mastodon")
     def test_init_from_env(self, mock_mastodon_cls, monkeypatch):
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
         assert client.instance_url == "https://mastodon.social"
@@ -38,19 +38,19 @@ class TestMastodonClientInit:
             api_base_url="https://mastodon.social",
         )
 
-    @patch("mastodon_client.Mastodon")
+    @patch("linkedin_sync.mastodon_client.Mastodon")
     def test_strips_trailing_slash(self, mock_mastodon_cls, monkeypatch):
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social/")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
         assert client.instance_url == "https://mastodon.social"
 
 
 class TestMastodonCreatePost:
-    @patch("mastodon_client.Mastodon")
+    @patch("linkedin_sync.mastodon_client.Mastodon")
     def test_creates_post(self, mock_mastodon_cls, monkeypatch):
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
@@ -62,7 +62,7 @@ class TestMastodonCreatePost:
         }
         mock_mastodon_cls.return_value = mock_api
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
         url = client.create_post(text="Hello Mastodon")
@@ -74,7 +74,7 @@ class TestMastodonCreatePost:
             language="en",
         )
 
-    @patch("mastodon_client.Mastodon")
+    @patch("linkedin_sync.mastodon_client.Mastodon")
     def test_custom_visibility(self, mock_mastodon_cls, monkeypatch):
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
@@ -85,7 +85,7 @@ class TestMastodonCreatePost:
         }
         mock_mastodon_cls.return_value = mock_api
 
-        from mastodon_client import MastodonClient
+        from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
         client.create_post(text="Private toot", visibility="unlisted")

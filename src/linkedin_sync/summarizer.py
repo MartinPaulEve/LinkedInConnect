@@ -5,7 +5,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from logging_config import get_logger
+from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 

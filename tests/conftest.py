@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from logging_config import configure_logging
+from linkedin_sync.logging_config import configure_logging
 
 configure_logging(json_logs=False)
 
-from feed_parser import BlogPost  # noqa: E402
+from linkedin_sync.feed_parser import BlogPost  # noqa: E402
 
 
 @pytest.fixture

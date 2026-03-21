@@ -6,7 +6,7 @@ import re
 import requests
 from atproto import Client, client_utils, models
 
-from logging_config import get_logger
+from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 

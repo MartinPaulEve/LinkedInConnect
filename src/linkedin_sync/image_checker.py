@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 from PIL import Image
 
-from logging_config import get_logger
+from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 

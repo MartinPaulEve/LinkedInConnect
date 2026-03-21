@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from feed_parser import parse_markdown_file
-from sync import cli
+from linkedin_sync.feed_parser import parse_markdown_file
+from linkedin_sync.sync import cli
 
 SAMPLE_MARKDOWN = """\
 ---
@@ -298,7 +298,7 @@ class TestCliFile:
         )
         assert result.exit_code == 0
 
-    @patch("sync._make_clients")
+    @patch("linkedin_sync.sync._make_clients")
     def test_live_sync_from_file(self, mock_make_clients, runner, tmp_path):
         md_file = tmp_path / "post.md"
         md_file.write_text(SAMPLE_MARKDOWN)

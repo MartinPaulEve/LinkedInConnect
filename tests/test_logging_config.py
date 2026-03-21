@@ -3,7 +3,7 @@
 import json
 import logging
 
-from logging_config import configure_logging, get_logger
+from linkedin_sync.logging_config import configure_logging, get_logger
 
 
 class TestConfigureLogging:

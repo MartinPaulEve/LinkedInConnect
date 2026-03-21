@@ -5,7 +5,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from image_checker import extract_image_paths, resize_image
+from linkedin_sync.image_checker import extract_image_paths, resize_image
 
 
 @pytest.fixture
@@ -351,7 +351,7 @@ class TestImageCheckCLI:
 
     def test_command_processes_images(self, runner, tmp_path):
         """image-check should resize referenced images."""
-        from sync import cli
+        from linkedin_sync.sync import cli
 
         img_dir = tmp_path / "images"
         img_dir.mkdir()
@@ -378,7 +378,7 @@ class TestImageCheckCLI:
 
     def test_command_reports_missing_images(self, runner, tmp_path):
         """image-check should warn about missing image files."""
-        from sync import cli
+        from linkedin_sync.sync import cli
 
         md = tmp_path / "post.md"
         md.write_text(
@@ -395,7 +395,7 @@ class TestImageCheckCLI:
 
     def test_command_no_images(self, runner, tmp_path):
         """image-check on a file with no images should succeed."""
-        from sync import cli
+        from linkedin_sync.sync import cli
 
         md = tmp_path / "post.md"
         md.write_text(
@@ -412,7 +412,7 @@ class TestImageCheckCLI:
 
     def test_dry_run_does_not_modify(self, runner, tmp_path):
         """image-check --dry-run should not modify images."""
-        from sync import cli
+        from linkedin_sync.sync import cli
 
         img_dir = tmp_path / "images"
         img_dir.mkdir()

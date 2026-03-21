@@ -88,7 +88,7 @@ uv run linkedin-oauth
 Or directly:
 
 ```bash
-uv run python oauth_helper.py
+uv run python src/linkedin_sync/oauth_helper.py
 ```
 
 This will:
@@ -103,7 +103,7 @@ Copy the `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_PERSON_URN` values into your `.en
 
 ### Access Token Expiry
 
-LinkedIn access tokens typically expire after **60 days**. When your token expires, run `oauth_helper.py` again to get a new one.
+LinkedIn access tokens typically expire after **60 days**. When your token expires, run `uv run linkedin-oauth` again to get a new one.
 
 ## Step 5: Verify Setup
 
@@ -117,7 +117,7 @@ This will fetch the feed, find today's posts, format them, and show what would b
 
 ## Usage
 
-All commands can be run with `uv run linkedin-sync` (the installed entry point) or `uv run python sync.py`.
+All commands can be run with `uv run linkedin-sync` (the installed entry point) or `uv run python src/linkedin_sync/sync.py`.
 
 ### Sync today's posts
 
@@ -284,7 +284,7 @@ uv run pytest --cov       # with coverage report
 - **No backdating**: LinkedIn does not support setting a custom publish date. Posts will appear with the date they were actually posted to LinkedIn. The original publish date is mentioned in the post text via the link to the original blog post.
 - **Character limit**: LinkedIn posts are limited to ~3000 characters. Long blog posts are intelligently truncated with a "Read the full post" link.
 - **Rate limits**: LinkedIn API has rate limits. Avoid syncing many posts in rapid succession.
-- **Token refresh**: Access tokens expire after ~60 days. Re-run `oauth_helper.py` when needed.
+- **Token refresh**: Access tokens expire after ~60 days. Re-run `uv run linkedin-oauth` when needed.
 
 ## Troubleshooting
 

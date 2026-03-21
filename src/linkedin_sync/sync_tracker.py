@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from logging_config import get_logger
+from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
