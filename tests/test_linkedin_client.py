@@ -9,31 +9,50 @@ import requests
 from linkedin_client import LinkedInClient
 from tests.conftest import make_mock_response
 
+# Helper to mock the userinfo call during __init__
+_USERINFO_RESPONSE = make_mock_response(
+    json_data={"sub": "testSub123", "name": "Test User"}
+)
+
+
+def _mock_session_get_for_init(url, **kwargs):
+    """Return a mock userinfo response for any GET during init."""
+    return _USERINFO_RESPONSE
+
+
+@pytest.fixture(autouse=True)
+def _mock_userinfo_resolution():
+    """Mock the /v2/userinfo call that happens during LinkedInClient init."""
+    with patch.object(
+        requests.Session, "get", side_effect=_mock_session_get_for_init
+    ):
+        yield
+
 
 class TestClientInit:
-    def test_init_with_explicit_credentials(self):
-        client = LinkedInClient(
-            access_token="test-token",
-            person_urn="urn:li:person:abc123",
-        )
-        assert client.access_token == "test-token"
-        assert client.person_urn == "urn:li:person:abc123"
-        assert client.member_urn == "urn:li:member:abc123"
+    def test_init_auto_resolves_person_urn(self):
+        client = LinkedInClient(access_token="test-token")
+        assert client.person_urn == "urn:li:person:testSub123"
+
+    def test_init_explicit_urn_used_as_fallback(self):
+        with patch.object(
+            requests.Session,
+            "get",
+            return_value=make_mock_response(status_code=401),
+        ):
+            client = LinkedInClient(
+                access_token="tok",
+                person_urn="urn:li:person:fallback",
+            )
+            assert client.person_urn == "urn:li:person:fallback"
 
     def test_init_from_env(self, monkeypatch):
         monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "env-token")
         monkeypatch.setenv("LINKEDIN_PERSON_URN", "urn:li:person:env123")
         client = LinkedInClient()
+        # Auto-resolution from userinfo takes precedence
         assert client.access_token == "env-token"
-        assert client.person_urn == "urn:li:person:env123"
-        assert client.member_urn == "urn:li:member:env123"
-
-    def test_init_with_member_urn_passthrough(self):
-        client = LinkedInClient(
-            access_token="tok",
-            person_urn="urn:li:member:12345",
-        )
-        assert client.member_urn == "urn:li:member:12345"
+        assert client.person_urn == "urn:li:person:testSub123"
 
     def test_missing_access_token_raises(self, monkeypatch):
         monkeypatch.delenv("LINKEDIN_ACCESS_TOKEN", raising=False)
@@ -41,91 +60,94 @@ class TestClientInit:
         with pytest.raises(ValueError, match="access token"):
             LinkedInClient()
 
-    def test_missing_person_urn_raises(self, monkeypatch):
+    def test_missing_urn_and_userinfo_fails_raises(self, monkeypatch):
         monkeypatch.delenv("LINKEDIN_PERSON_URN", raising=False)
-        with pytest.raises(ValueError, match="person URN"):
+        with (
+            patch.object(
+                requests.Session,
+                "get",
+                return_value=make_mock_response(status_code=401),
+            ),
+            pytest.raises(ValueError, match="Could not resolve"),
+        ):
             LinkedInClient(access_token="token")
 
     def test_default_headers(self):
-        client = LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:x"
-        )
+        client = LinkedInClient(access_token="tok")
         headers = client._default_headers()
         assert headers["Authorization"] == "Bearer tok"
         assert headers["X-Restli-Protocol-Version"] == "2.0.0"
-        assert "LinkedIn-Version" not in headers
+        assert "LinkedIn-Version" in headers
 
 
 class TestGetProfile:
-    def _make_client(self):
-        return LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:me"
-        )
+    def test_get_profile_success(self):
+        client = LinkedInClient(access_token="tok")
+        with patch.object(
+            requests.Session,
+            "get",
+            return_value=make_mock_response(
+                json_data={"name": "Martin Eve", "sub": "abc123"}
+            ),
+        ):
+            profile = client.get_profile()
+            assert profile["name"] == "Martin Eve"
 
-    @patch.object(requests.Session, "get")
-    def test_get_profile_success(self, mock_get):
-        mock_get.return_value = make_mock_response(
-            json_data={"name": "Martin Eve", "sub": "abc123"}
-        )
-        client = self._make_client()
-        profile = client.get_profile()
-        assert profile["name"] == "Martin Eve"
-
-    @patch.object(requests.Session, "get")
-    def test_get_profile_error_raises(self, mock_get):
-        mock_get.return_value = make_mock_response(status_code=401)
-        client = self._make_client()
-        with pytest.raises(requests.exceptions.HTTPError):
+    def test_get_profile_error_raises(self):
+        client = LinkedInClient(access_token="tok")
+        with (
+            patch.object(
+                requests.Session,
+                "get",
+                return_value=make_mock_response(status_code=401),
+            ),
+            pytest.raises(requests.exceptions.HTTPError),
+        ):
             client.get_profile()
 
 
 class TestCreatePost:
     def _make_client(self):
-        return LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:me"
-        )
+        return LinkedInClient(access_token="tok")
 
     @patch.object(requests.Session, "post")
     def test_text_only_post(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:ugcPost:111"},
+            headers={"x-restli-id": "urn:li:share:111"},
         )
         client = self._make_client()
         urn = client.create_post(text="Hello LinkedIn!")
-        assert urn == "urn:li:ugcPost:111"
+        assert urn == "urn:li:share:111"
 
         called_json = mock_post.call_args[1]["json"]
-        assert called_json["author"] == "urn:li:member:me"
-        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
-        assert share["shareCommentary"]["text"] == "Hello LinkedIn!"
-        assert share["shareMediaCategory"] == "NONE"
-        assert "media" not in share
+        assert called_json["author"] == "urn:li:person:testSub123"
+        assert called_json["commentary"] == "Hello LinkedIn!"
+        assert called_json["visibility"] == "PUBLIC"
+        assert "content" not in called_json
 
     @patch.object(requests.Session, "post")
     def test_post_with_image(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:ugcPost:222"},
+            headers={"x-restli-id": "urn:li:share:222"},
         )
         client = self._make_client()
         urn = client.create_post(
             text="Image post",
-            image_urn="urn:li:digitalmediaAsset:abc",
+            image_urn="urn:li:image:abc",
             image_alt_text="A nice photo",
         )
-        assert urn == "urn:li:ugcPost:222"
+        assert urn == "urn:li:share:222"
         called_json = mock_post.call_args[1]["json"]
-        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
-        assert share["shareMediaCategory"] == "IMAGE"
-        assert share["media"][0]["media"] == "urn:li:digitalmediaAsset:abc"
-        assert share["media"][0]["title"]["text"] == "A nice photo"
+        assert called_json["content"]["media"]["id"] == "urn:li:image:abc"
+        assert called_json["content"]["media"]["altText"] == "A nice photo"
 
     @patch.object(requests.Session, "post")
     def test_post_with_article(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:ugcPost:333"},
+            headers={"x-restli-id": "urn:li:share:333"},
         )
         client = self._make_client()
         client.create_post(
@@ -135,28 +157,27 @@ class TestCreatePost:
             article_description="About things",
         )
         called_json = mock_post.call_args[1]["json"]
-        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
-        assert share["shareMediaCategory"] == "ARTICLE"
-        assert share["media"][0]["originalUrl"] == "https://eve.gd/post/"
-        assert share["media"][0]["title"]["text"] == "My Article"
-        assert share["media"][0]["description"]["text"] == "About things"
+        assert (
+            called_json["content"]["article"]["source"]
+            == "https://eve.gd/post/"
+        )
+        assert called_json["content"]["article"]["title"] == "My Article"
 
     @patch.object(requests.Session, "post")
     def test_image_takes_precedence_over_article(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:ugcPost:444"},
+            headers={"x-restli-id": "urn:li:share:444"},
         )
         client = self._make_client()
         client.create_post(
             text="Both",
-            image_urn="urn:li:digitalmediaAsset:img",
+            image_urn="urn:li:image:img",
             article_url="https://eve.gd/",
         )
         called_json = mock_post.call_args[1]["json"]
-        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
-        assert share["shareMediaCategory"] == "IMAGE"
-        assert share["media"][0]["media"] == "urn:li:digitalmediaAsset:img"
+        assert "media" in called_json["content"]
+        assert "article" not in called_json["content"]
 
     @patch.object(requests.Session, "post")
     def test_default_alt_text(self, mock_post):
@@ -165,10 +186,9 @@ class TestCreatePost:
             headers={"x-restli-id": "urn:x"},
         )
         client = self._make_client()
-        client.create_post(text="x", image_urn="urn:li:digitalmediaAsset:x")
+        client.create_post(text="x", image_urn="urn:li:image:x")
         called_json = mock_post.call_args[1]["json"]
-        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
-        assert share["media"][0]["title"]["text"] == "Blog post image"
+        assert called_json["content"]["media"]["altText"] == "Blog post image"
 
     @patch.object(requests.Session, "post")
     def test_api_error_raises(self, mock_post):
@@ -180,9 +200,7 @@ class TestCreatePost:
 
 class TestUploadImage:
     def _make_client(self):
-        return LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:me"
-        )
+        return LinkedInClient(access_token="tok")
 
     @patch("linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
@@ -193,13 +211,8 @@ class TestUploadImage:
         mock_session_post.return_value = make_mock_response(
             json_data={
                 "value": {
-                    "uploadMechanism": {
-                        "com.linkedin.digitalmedia.uploading"
-                        ".MediaUploadHttpRequest": {
-                            "uploadUrl": ("https://linkedin.com/upload/xyz"),
-                        }
-                    },
-                    "asset": "urn:li:digitalmediaAsset:abc123",
+                    "uploadUrl": "https://linkedin.com/upload/xyz",
+                    "image": "urn:li:image:abc123",
                 }
             }
         )
@@ -208,7 +221,7 @@ class TestUploadImage:
         client = self._make_client()
         urn = client.upload_image(image_path=str(img_file))
 
-        assert urn == "urn:li:digitalmediaAsset:abc123"
+        assert urn == "urn:li:image:abc123"
         mock_put.assert_called_once()
         assert mock_put.call_args[0][0] == "https://linkedin.com/upload/xyz"
 
@@ -231,13 +244,8 @@ class TestUploadImage:
         mock_session_post.return_value = make_mock_response(
             json_data={
                 "value": {
-                    "uploadMechanism": {
-                        "com.linkedin.digitalmedia.uploading"
-                        ".MediaUploadHttpRequest": {
-                            "uploadUrl": ("https://linkedin.com/upload/xyz"),
-                        }
-                    },
-                    "asset": "urn:li:digitalmediaAsset:fromurl",
+                    "uploadUrl": "https://linkedin.com/upload/xyz",
+                    "image": "urn:li:image:fromurl",
                 }
             }
         )
@@ -246,11 +254,11 @@ class TestUploadImage:
         client = self._make_client()
         urn = client.upload_image(image_url="https://eve.gd/images/photo.jpg")
 
-        assert urn == "urn:li:digitalmediaAsset:fromurl"
+        assert urn == "urn:li:image:fromurl"
         mock_get.assert_called_once()
 
     @patch.object(requests.Session, "post")
-    def test_upload_register_error_raises(self, mock_session_post, tmp_path):
+    def test_upload_init_error_raises(self, mock_session_post, tmp_path):
         img_file = tmp_path / "test.jpg"
         img_file.write_bytes(b"data")
         mock_session_post.return_value = make_mock_response(status_code=403)
@@ -261,9 +269,7 @@ class TestUploadImage:
 
 class TestDownloadImage:
     def _make_client(self):
-        return LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:me"
-        )
+        return LinkedInClient(access_token="tok")
 
     @patch("linkedin_client.requests.get")
     def test_extension_from_url(self, mock_get):
@@ -310,9 +316,7 @@ class TestDownloadImage:
 
 class TestDiagnostics:
     def _make_client(self):
-        return LinkedInClient(
-            access_token="tok", person_urn="urn:li:person:me"
-        )
+        return LinkedInClient(access_token="tok")
 
     @patch.object(requests.Session, "post")
     def test_empty_403_includes_hints(self, mock_post):
