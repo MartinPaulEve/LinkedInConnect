@@ -130,6 +130,41 @@ class TestExtractImagePaths:
         parent = sample_md_front_matter_image.parent
         assert parent / "images" / "featured.jpg" in paths
 
+    def test_dict_valued_front_matter_image(self, tmp_path):
+        """Front matter image as a dict (e.g. {src: ..., alt: ...})."""
+        md = tmp_path / "post.md"
+        md.write_text(
+            "---\n"
+            "title: Dict Image\n"
+            "url: https://example.com/dict\n"
+            "image:\n"
+            "  src: images/hero.jpg\n"
+            "  alt: Hero image\n"
+            "---\n"
+            "\n"
+            "Post body.\n"
+        )
+        paths = extract_image_paths(str(md))
+        assert len(paths) == 1
+        assert tmp_path / "images" / "hero.jpg" in paths
+
+    def test_non_string_front_matter_image_skipped(self, tmp_path):
+        """Front matter image as a dict without src/url/path is skipped."""
+        md = tmp_path / "post.md"
+        md.write_text(
+            "---\n"
+            "title: Bad Dict\n"
+            "url: https://example.com/bad\n"
+            "image:\n"
+            "  alt: No source\n"
+            "  width: 100\n"
+            "---\n"
+            "\n"
+            "Post body.\n"
+        )
+        paths = extract_image_paths(str(md))
+        assert paths == []
+
     def test_deduplicates_paths(self, tmp_path):
         md = tmp_path / "post.md"
         md.write_text(
