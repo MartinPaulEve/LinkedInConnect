@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0A66C2"/>
+      <stop offset="50%" style="stop-color:#6364FF"/>
+      <stop offset="100%" style="stop-color:#0285FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="64" ry="64" fill="url(#bg)"/>
+  <g transform="translate(256,256)" fill="none" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-80,-120 A140,140 0 0,1 120,-40"/>
+    <polygon points="120,-40 90,-70 130,-75" fill="white" stroke="none"/>
+    <path d="M80,120 A140,140 0 0,1 -120,40"/>
+    <polygon points="-120,40 -90,70 -130,75" fill="white" stroke="none"/>
+  </g>
+  <g transform="translate(256,256)">
+    <circle cx="0" cy="0" r="12" fill="white"/>
+    <path d="M-40,40 A56,56 0 0,1 -40,-16" fill="none" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <path d="M-40,40 A96,96 0 0,1 -40,-56" fill="none" stroke="white" stroke-width="14" stroke-linecap="round" opacity="0.7"/>
+  </g>
+  <text x="256" y="440" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-weight="bold" font-size="52" fill="white" letter-spacing="6" opacity="0.9">SYNC</text>
+</svg>
