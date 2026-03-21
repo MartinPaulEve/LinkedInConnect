@@ -12,7 +12,7 @@ from logging_config import get_logger
 log = get_logger(__name__)
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/rest"
-DEFAULT_LINKEDIN_VERSION = "202501"
+DEFAULT_LINKEDIN_VERSION = "202602"
 
 
 class LinkedInClient:
@@ -59,6 +59,53 @@ class LinkedInClient:
             "LinkedIn-Version": self.api_version,
         }
 
+    def _raise_with_diagnostics(self, resp: requests.Response) -> None:
+        """Raise an HTTPError with added diagnostic hints."""
+        try:
+            body = resp.json()
+        except Exception:
+            body = {"raw": resp.text}
+
+        status = resp.status_code
+        code = body.get("code", "")
+        message = body.get("message", "")
+
+        hints = []
+        if status == 403 and not message:
+            hints.append(
+                "Empty 403 typically means the access token lacks the "
+                "required scope (w_member_social). Regenerate your token "
+                "at https://www.linkedin.com/developers/ with the "
+                "'Share on LinkedIn' product enabled."
+            )
+            hints.append(
+                "LinkedIn access tokens expire after 60 days. "
+                "Check if yours needs refreshing."
+            )
+        elif status == 403:
+            hints.append(
+                "Access denied. Verify your app has the correct "
+                "permissions and the token is not expired."
+            )
+        elif status == 426 and code == "NONEXISTENT_VERSION":
+            hints.append(
+                f"API version {self.api_version} is not active. "
+                "Set LINKEDIN_API_VERSION env var to a supported version "
+                "(e.g. 202601)."
+            )
+        elif status == 401:
+            hints.append("Access token is invalid or expired.")
+
+        log.error(
+            "linkedin_api_error",
+            status_code=status,
+            response_body=resp.text,
+            url=resp.url,
+            api_version=self.api_version,
+            hints=hints,
+        )
+        resp.raise_for_status()
+
     def get_profile(self) -> dict:
         """Fetch the authenticated user's profile to verify credentials."""
         log.debug("fetching_profile")
@@ -66,7 +113,8 @@ class LinkedInClient:
             f"{LINKEDIN_API_BASE}/me",
             headers={"Content-Type": "application/json"},
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            self._raise_with_diagnostics(resp)
         profile = resp.json()
         log.info("profile_fetched", profile_id=profile.get("id"))
         return profile
@@ -101,12 +149,7 @@ class LinkedInClient:
             },
         )
         if not init_resp.ok:
-            log.error(
-                "linkedin_api_error",
-                status_code=init_resp.status_code,
-                response_body=init_resp.text,
-            )
-        init_resp.raise_for_status()
+            self._raise_with_diagnostics(init_resp)
         init_data = init_resp.json()
         upload_url = init_data["value"]["uploadUrl"]
         image_urn = init_data["value"]["image"]
@@ -194,12 +237,7 @@ class LinkedInClient:
             json=body,
         )
         if not resp.ok:
-            log.error(
-                "linkedin_api_error",
-                status_code=resp.status_code,
-                response_body=resp.text,
-            )
-        resp.raise_for_status()
+            self._raise_with_diagnostics(resp)
 
         post_urn = resp.headers.get("x-restli-id", "")
         log.info("post_created", post_urn=post_urn)
