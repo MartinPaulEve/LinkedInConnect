@@ -4,6 +4,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import click
 from dotenv import load_dotenv
@@ -401,28 +402,35 @@ def today(ctx):
 
 
 @cli.command()
-@click.argument("url")
+@click.argument("url_or_path")
 @click.pass_context
-def post(ctx, url):
-    """Sync a specific post by its URL."""
-    feed_url = ctx.obj["feed_url"]
+def post(ctx, url_or_path):
+    """Sync a specific post by its URL or local markdown file path."""
     dry_run = ctx.obj["dry_run"]
     force = ctx.obj["force"]
     tracker = ctx.obj["tracker"]
 
-    if tracker.is_synced(url) and not force:
-        log.info("post_already_synced", url=url)
+    # Detect whether argument is a local file or a URL
+    if Path(url_or_path).is_file():
+        try:
+            found_post = parse_markdown_file(url_or_path)
+        except (FileNotFoundError, ValueError) as e:
+            log.error("markdown_parse_failed", error=str(e))
+            raise SystemExit(1) from e
+    else:
+        feed_url = ctx.obj["feed_url"]
+        found_post = get_post_by_url(url_or_path, feed_url)
+        if not found_post:
+            log.error("post_not_found_in_feed", url=url_or_path)
+            raise SystemExit(1)
+
+    if tracker.is_synced(found_post.url) and not force:
+        log.info("post_already_synced", url=found_post.url)
         return
 
-    if force and tracker.is_synced(url):
-        log.info("force_resync", url=url)
-        tracker.remove_record(url)
-
-    found_post = get_post_by_url(url, feed_url)
-
-    if not found_post:
-        log.error("post_not_found_in_feed", url=url)
-        raise SystemExit(1)
+    if force and tracker.is_synced(found_post.url):
+        log.info("force_resync", url=found_post.url)
+        tracker.remove_record(found_post.url)
 
     summary = ctx.obj["summary"]
     li_client, bs_client, md_client = _make_clients(dry_run)

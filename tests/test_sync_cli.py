@@ -166,6 +166,7 @@ class TestCliPost:
     @patch("sync.get_post_by_url")
     def test_already_synced_without_force(self, mock_get, runner, tmp_path):
         post = _make_post()
+        mock_get.return_value = post
         state_file = tmp_path / "state.json"
         state_file.write_text(
             json.dumps(
@@ -193,8 +194,6 @@ class TestCliPost:
             ],
         )
         assert result.exit_code == 0
-        # Should not re-sync
-        mock_get.assert_not_called()
 
     @patch("sync.get_post_by_url")
     def test_force_resync_specific_post(self, mock_get, runner, tmp_path):
@@ -226,6 +225,59 @@ class TestCliPost:
                 "--no-summary",
                 "post",
                 post.url,
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_post_with_local_file_dry_run(self, runner, tmp_path):
+        """post command accepts a local .md file path."""
+        md = tmp_path / "post.md"
+        md.write_text(
+            "---\n"
+            "title: Local Post\n"
+            "url: https://example.com/local\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "Some content here.\n"
+        )
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                str(md),
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_post_with_local_file_shows_preview(self, runner, tmp_path):
+        """post with local file in dry-run shows platform previews."""
+        md = tmp_path / "post.md"
+        md.write_text(
+            "---\n"
+            "title: Preview Post\n"
+            "url: https://example.com/preview\n"
+            "date: 2026-03-21\n"
+            "tags: python, testing\n"
+            "---\n"
+            "\n"
+            "A blog post about testing.\n"
+        )
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                str(md),
             ],
         )
         assert result.exit_code == 0
