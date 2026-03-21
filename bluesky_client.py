@@ -3,6 +3,7 @@
 import os
 import re
 
+import requests
 from atproto import Client, client_utils, models
 
 from logging_config import get_logger
@@ -49,15 +50,19 @@ class BlueskyClient:
         link_url: str | None = None,
         link_title: str | None = None,
         link_description: str | None = None,
+        thumbnail_url: str | None = None,
     ) -> str:
         """Create a Bluesky post. Returns the post URL.
 
         If link_url is provided, a link card embed is created.
+        If thumbnail_url is also provided, the image is fetched and
+        attached to the link card as a thumbnail preview.
         """
         log.info(
             "creating_bluesky_post",
             text_length=len(text),
             has_link=bool(link_url),
+            has_thumbnail=bool(thumbnail_url),
         )
 
         # Build facets for any URLs in the text
@@ -66,11 +71,16 @@ class BlueskyClient:
 
         embed = None
         if link_url:
+            thumb_blob = None
+            if thumbnail_url:
+                thumb_blob = self._upload_thumbnail(thumbnail_url)
+
             embed = models.AppBskyEmbedExternal.Main(
                 external=models.AppBskyEmbedExternal.External(
                     uri=link_url,
                     title=link_title or "",
                     description=link_description or "",
+                    thumb=thumb_blob,
                 )
             )
 
@@ -81,6 +91,29 @@ class BlueskyClient:
         post_url = self._uri_to_url(response.uri)
         log.info("bluesky_post_created", post_url=post_url)
         return post_url
+
+    def _upload_thumbnail(self, image_url: str):
+        """Fetch an image from a URL and upload it as a blob.
+
+        Returns the blob reference for use in embeds, or None on failure.
+        """
+        try:
+            resp = requests.get(image_url, timeout=15)
+            resp.raise_for_status()
+            upload = self._client.upload_blob(resp.content)
+            log.info(
+                "bluesky_thumbnail_uploaded",
+                image_url=image_url,
+                size=len(resp.content),
+            )
+            return upload.blob
+        except Exception as e:
+            log.warning(
+                "bluesky_thumbnail_upload_failed",
+                image_url=image_url,
+                error=str(e),
+            )
+            return None
 
     def _uri_to_url(self, at_uri: str) -> str:
         """Convert an AT URI to a bsky.app URL."""

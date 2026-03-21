@@ -195,6 +195,7 @@ def _post_to_bluesky(client, post, bluesky_text, result):
             link_url=post.url,
             link_title=post.title,
             link_description=post.summary,
+            thumbnail_url=post.featured_image_url,
         )
         log.info("bluesky_posted", post_url=post_url)
         return post_url
