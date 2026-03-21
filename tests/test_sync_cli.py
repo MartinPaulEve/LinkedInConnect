@@ -349,8 +349,8 @@ class TestVerify:
         self, mock_li_cls, mock_bs_cls, mock_md_cls, runner, tmp_path
     ):
         mock_li_cls.return_value.get_profile.return_value = {
-            "localizedFirstName": "Martin",
-            "localizedLastName": "Eve",
+            "name": "Martin Eve",
+            "sub": "abc123",
         }
         mock_bs_cls.return_value.handle = "test.bsky.social"
         state_file = str(tmp_path / "state.json")

@@ -557,53 +557,18 @@ def list_synced(ctx):
 @click.pass_context
 def verify(ctx):
     """Verify API credentials for all configured platforms."""
-    import requests
-
     from linkedin_client import LinkedInClient
 
     results = {}
 
-    # LinkedIn — try /me first, then introspect token if that fails
+    # LinkedIn — uses /v2/userinfo
     try:
         li = LinkedInClient()
         profile = li.get_profile()
-        name = (
-            f"{profile.get('localizedFirstName', '')} "
-            f"{profile.get('localizedLastName', '')}"
-        ).strip()
+        name = profile.get("name", "unknown")
         results["linkedin"] = f"OK ({name})"
     except Exception as e:
         results["linkedin"] = f"FAILED: {e}"
-        # Try token introspection for more info
-        token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
-        if token:
-            try:
-                resp = requests.get(
-                    "https://api.linkedin.com/v2/me",
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=10,
-                )
-                log.info(
-                    "linkedin_v2_me_check",
-                    status_code=resp.status_code,
-                    response_body=resp.text[:500],
-                )
-            except Exception as v2_err:
-                log.info("linkedin_v2_me_failed", error=str(v2_err))
-
-            try:
-                resp = requests.get(
-                    "https://api.linkedin.com/v2/userinfo",
-                    headers={"Authorization": f"Bearer {token}"},
-                    timeout=10,
-                )
-                log.info(
-                    "linkedin_userinfo_check",
-                    status_code=resp.status_code,
-                    response_body=resp.text[:500],
-                )
-            except Exception as ui_err:
-                log.info("linkedin_userinfo_failed", error=str(ui_err))
 
     # Bluesky
     try:
