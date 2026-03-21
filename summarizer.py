@@ -1,4 +1,4 @@
-"""Generate human-sounding LinkedIn summaries using an LLM."""
+"""Generate human-sounding social media summaries using an LLM."""
 
 import os
 import re
@@ -9,7 +9,7 @@ from logging_config import get_logger
 
 log = get_logger(__name__)
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT_LINKEDIN = """\
 You are ghostwriting a LinkedIn post for Martin Paul Eve, a professor and \
 academic who blogs about higher education, open access, publishing, and \
 technology. Your job is to write a short summary of a blog post that will \
@@ -37,6 +37,25 @@ the argument, but leave them wanting to read the full piece for the detail.
 would write on social media.\
 """
 
+SYSTEM_PROMPT_SHORT = """\
+You are ghostwriting a short social media post for Martin Paul Eve, a \
+professor and academic. Your job is to write a very brief summary of a blog \
+post, suitable for Bluesky or Mastodon.
+
+Rules:
+- Write in first person as Martin. Natural, conversational tone.
+- You MUST keep the entire output under {max_chars} characters. This is a \
+hard limit. Count carefully.
+- Get straight to the point. One or two sentences covering the key argument.
+- Do NOT use emojis.
+- Do NOT use em-dashes (use commas or full stops instead).
+- Do NOT use hashtags, bullet points, or numbered lists.
+- Do NOT include any URLs or links. The link will be added separately.
+- Do NOT use "In this post" or "I wrote about". Just state the point.
+- Do NOT end with a question or call to action.
+- No clickbait. Just an honest, concise summary of the post's argument.\
+"""
+
 USER_PROMPT_TEMPLATE = """\
 Blog post title: {title}
 
@@ -52,15 +71,9 @@ def summarize_post(
     doi: str | None = None,
     tags: list[str] | None = None,
 ) -> str:
-    """Generate a LinkedIn summary of a blog post using an LLM.
-
-    The LLM provider is configured via LLM_PROVIDER env var
-    ("anthropic" or "openai"). API keys are read from
-    ANTHROPIC_API_KEY or OPENAI_API_KEY respectively.
-    """
+    """Generate a LinkedIn summary of a blog post using an LLM."""
     content_text = _html_to_plain_text(content_html)
 
-    # Truncate very long posts to avoid token limits
     if len(content_text) > 8000:
         content_text = content_text[:8000] + "\n\n[truncated]"
 
@@ -68,17 +81,7 @@ def summarize_post(
         title=title, content_text=content_text
     )
 
-    provider = os.environ.get("LLM_PROVIDER", "anthropic").lower()
-    log.info("generating_summary", provider=provider, title=title)
-
-    if provider == "openai":
-        summary = _call_openai(user_prompt)
-    elif provider == "anthropic":
-        summary = _call_anthropic(user_prompt)
-    else:
-        raise ValueError(
-            f"Unknown LLM_PROVIDER: {provider}. Use 'anthropic' or 'openai'."
-        )
+    summary = _call_llm(SYSTEM_PROMPT_LINKEDIN, user_prompt)
 
     # Build the final post with footer
     parts = [summary.strip()]
@@ -99,7 +102,64 @@ def summarize_post(
     return result
 
 
-def _call_anthropic(user_prompt: str) -> str:
+def summarize_post_short(
+    title: str,
+    content_html: str,
+    post_url: str,
+    max_chars: int = 280,
+) -> str:
+    """Generate a short summary for Bluesky/Mastodon.
+
+    The returned text includes the post URL appended at the end.
+    max_chars is the platform limit; the summary text is sized to
+    leave room for the URL.
+    """
+    content_text = _html_to_plain_text(content_html)
+
+    if len(content_text) > 8000:
+        content_text = content_text[:8000] + "\n\n[truncated]"
+
+    # Reserve space for "\n\n" + URL
+    url_overhead = len(post_url) + 2
+    summary_budget = max_chars - url_overhead
+
+    system_prompt = SYSTEM_PROMPT_SHORT.format(max_chars=summary_budget)
+    user_prompt = USER_PROMPT_TEMPLATE.format(
+        title=title, content_text=content_text
+    )
+
+    summary = _call_llm(system_prompt, user_prompt)
+    summary = summary.strip()
+
+    # Hard-truncate if the LLM exceeded the budget
+    if len(summary) > summary_budget:
+        summary = summary[: summary_budget - 3].rsplit(" ", 1)[0] + "..."
+
+    result = f"{summary}\n\n{post_url}"
+    log.info(
+        "short_summary_generated",
+        total_length=len(result),
+        max_chars=max_chars,
+    )
+    return result
+
+
+def _call_llm(system_prompt: str, user_prompt: str) -> str:
+    """Call the configured LLM provider."""
+    provider = os.environ.get("LLM_PROVIDER", "anthropic").lower()
+    log.info("calling_llm", provider=provider)
+
+    if provider == "openai":
+        return _call_openai(system_prompt, user_prompt)
+    elif provider == "anthropic":
+        return _call_anthropic(system_prompt, user_prompt)
+    else:
+        raise ValueError(
+            f"Unknown LLM_PROVIDER: {provider}. Use 'anthropic' or 'openai'."
+        )
+
+
+def _call_anthropic(system_prompt: str, user_prompt: str) -> str:
     """Call the Anthropic API to generate a summary."""
     import anthropic
 
@@ -117,14 +177,14 @@ def _call_anthropic(user_prompt: str) -> str:
     message = client.messages.create(
         model=model,
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
+        system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
 
     return message.content[0].text
 
 
-def _call_openai(user_prompt: str) -> str:
+def _call_openai(system_prompt: str, user_prompt: str) -> str:
     """Call the OpenAI API to generate a summary."""
     import openai
 
@@ -143,7 +203,7 @@ def _call_openai(user_prompt: str) -> str:
         model=model,
         max_tokens=1024,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
     )

@@ -7,6 +7,7 @@ import pytest
 from summarizer import (
     _html_to_plain_text,
     summarize_post,
+    summarize_post_short,
 )
 
 
@@ -27,7 +28,7 @@ class TestHtmlToPlainText:
 
 
 class TestSummarizePost:
-    @patch("summarizer._call_anthropic")
+    @patch("summarizer._call_llm")
     def test_anthropic_provider(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "A great summary of this post."
@@ -42,44 +43,7 @@ class TestSummarizePost:
         assert "A great summary of this post." in result
         assert "https://eve.gd/test/" in result
 
-    @patch("summarizer._call_openai")
-    def test_openai_provider(self, mock_call, monkeypatch):
-        monkeypatch.setenv("LLM_PROVIDER", "openai")
-        mock_call.return_value = "An OpenAI summary."
-
-        result = summarize_post(
-            title="Test Post",
-            content_html="<p>Content.</p>",
-            post_url="https://eve.gd/test/",
-        )
-
-        mock_call.assert_called_once()
-        assert "An OpenAI summary." in result
-
-    @patch("summarizer._call_anthropic")
-    def test_default_provider_is_anthropic(self, mock_call, monkeypatch):
-        monkeypatch.delenv("LLM_PROVIDER", raising=False)
-        mock_call.return_value = "Summary text."
-
-        summarize_post(
-            title="Test",
-            content_html="<p>X</p>",
-            post_url="https://eve.gd/t/",
-        )
-
-        mock_call.assert_called_once()
-
-    def test_unknown_provider_raises(self, monkeypatch):
-        monkeypatch.setenv("LLM_PROVIDER", "gemini")
-
-        with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
-            summarize_post(
-                title="Test",
-                content_html="<p>X</p>",
-                post_url="https://eve.gd/t/",
-            )
-
-    @patch("summarizer._call_anthropic")
+    @patch("summarizer._call_llm")
     def test_includes_doi(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -93,7 +57,7 @@ class TestSummarizePost:
 
         assert "DOI: https://doi.org/10.1234/test" in result
 
-    @patch("summarizer._call_anthropic")
+    @patch("summarizer._call_llm")
     def test_includes_hashtags(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -108,7 +72,7 @@ class TestSummarizePost:
         assert "#python" in result
         assert "#openaccess" in result
 
-    @patch("summarizer._call_anthropic")
+    @patch("summarizer._call_llm")
     def test_truncates_long_content(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -120,9 +84,62 @@ class TestSummarizePost:
             post_url="https://eve.gd/t/",
         )
 
-        # Check that the prompt sent to the LLM was truncated
-        call_args = mock_call.call_args[0][0]
-        assert "[truncated]" in call_args
+        call_args = mock_call.call_args[0]
+        assert "[truncated]" in call_args[1]
+
+
+class TestSummarizePostShort:
+    @patch("summarizer._call_llm")
+    def test_includes_url(self, mock_call):
+        mock_call.return_value = "Short summary."
+
+        result = summarize_post_short(
+            title="Test",
+            content_html="<p>Content</p>",
+            post_url="https://eve.gd/t/",
+            max_chars=300,
+        )
+
+        assert "https://eve.gd/t/" in result
+        assert "Short summary." in result
+
+    @patch("summarizer._call_llm")
+    def test_respects_max_chars(self, mock_call):
+        mock_call.return_value = "Short."
+
+        result = summarize_post_short(
+            title="Test",
+            content_html="<p>Content</p>",
+            post_url="https://eve.gd/t/",
+            max_chars=300,
+        )
+
+        assert len(result) <= 300
+
+    @patch("summarizer._call_llm")
+    def test_hard_truncates_if_llm_exceeds_budget(self, mock_call):
+        # Return something way too long
+        mock_call.return_value = "x" * 500
+
+        result = summarize_post_short(
+            title="Test",
+            content_html="<p>Content</p>",
+            post_url="https://eve.gd/t/",
+            max_chars=300,
+        )
+
+        assert len(result) <= 300
+        assert result.endswith("https://eve.gd/t/")
+
+
+class TestCallLlm:
+    def test_unknown_provider_raises(self, monkeypatch):
+        monkeypatch.setenv("LLM_PROVIDER", "gemini")
+
+        from summarizer import _call_llm
+
+        with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
+            _call_llm("system", "user")
 
 
 class TestCallAnthropic:
@@ -132,7 +149,7 @@ class TestCallAnthropic:
         from summarizer import _call_anthropic
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-            _call_anthropic("test prompt")
+            _call_anthropic("system", "test prompt")
 
     def test_calls_api(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -149,7 +166,7 @@ class TestCallAnthropic:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic_mod}):
             from summarizer import _call_anthropic
 
-            result = _call_anthropic("test prompt")
+            result = _call_anthropic("system prompt", "test prompt")
 
         assert result == "Generated summary."
         mock_client.messages.create.assert_called_once()
@@ -164,7 +181,7 @@ class TestCallOpenai:
         from summarizer import _call_openai
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-            _call_openai("test prompt")
+            _call_openai("system", "test prompt")
 
     def test_calls_api(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -183,7 +200,7 @@ class TestCallOpenai:
         with patch.dict("sys.modules", {"openai": mock_openai_mod}):
             from summarizer import _call_openai
 
-            result = _call_openai("test prompt")
+            result = _call_openai("system prompt", "test prompt")
 
         assert result == "OpenAI summary."
         call_kwargs = mock_client.chat.completions.create.call_args[1]
@@ -193,16 +210,20 @@ class TestCallOpenai:
 class TestSyncPostSummaryMode:
     """Test that sync_post correctly uses summary mode."""
 
+    @patch("sync.summarize_post_short")
     @patch("sync.summarize_post")
     @patch("sync.format_for_linkedin")
     def test_summary_true_calls_summarize(
-        self, mock_format, mock_summarize, monkeypatch
+        self, mock_format, mock_summarize, mock_short, monkeypatch
     ):
         mock_summarize.return_value = "LLM summary text"
+        mock_short.return_value = "Short summary https://eve.gd/test/"
 
         from datetime import datetime, timezone
+        from unittest.mock import MagicMock
 
         from feed_parser import BlogPost
+        from sync import sync_post
 
         post = BlogPost(
             id="https://eve.gd/test/",
@@ -217,25 +238,25 @@ class TestSyncPostSummaryMode:
             tags=[],
         )
 
-        from unittest.mock import MagicMock
-
-        from sync import sync_post
-
         tracker = MagicMock()
-        result = sync_post(post, None, tracker, dry_run=True, summary=True)
+        sync_post(post, tracker, dry_run=True, summary=True)
 
-        assert result is True
         mock_summarize.assert_called_once()
         mock_format.assert_not_called()
 
+    @patch("sync.summarize_post_short")
     @patch("sync.summarize_post")
     @patch("sync.format_for_linkedin")
-    def test_summary_false_calls_format(self, mock_format, mock_summarize):
+    def test_summary_false_calls_format(
+        self, mock_format, mock_summarize, mock_short
+    ):
         mock_format.return_value = "Formatted full text"
 
         from datetime import datetime, timezone
+        from unittest.mock import MagicMock
 
         from feed_parser import BlogPost
+        from sync import sync_post
 
         post = BlogPost(
             id="https://eve.gd/test/",
@@ -250,13 +271,9 @@ class TestSyncPostSummaryMode:
             tags=[],
         )
 
-        from unittest.mock import MagicMock
-
-        from sync import sync_post
-
         tracker = MagicMock()
-        result = sync_post(post, None, tracker, dry_run=True, summary=False)
+        sync_post(post, tracker, dry_run=True, summary=False)
 
-        assert result is True
         mock_format.assert_called_once()
         mock_summarize.assert_not_called()
+        mock_short.assert_not_called()

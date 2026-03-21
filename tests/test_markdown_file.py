@@ -235,16 +235,16 @@ class TestCliFile:
         )
         assert result.exit_code == 0
 
-    @patch("sync._make_client")
-    def test_live_sync_from_file(self, mock_make_client, runner, tmp_path):
+    @patch("sync._make_clients")
+    def test_live_sync_from_file(self, mock_make_clients, runner, tmp_path):
         md_file = tmp_path / "post.md"
         md_file.write_text(SAMPLE_MARKDOWN)
         state_file = str(tmp_path / "state.json")
 
-        mock_client = MagicMock()
-        mock_client.upload_image.return_value = "urn:li:image:123"
-        mock_client.create_post.return_value = "urn:li:share:file123"
-        mock_make_client.return_value = mock_client
+        mock_li = MagicMock()
+        mock_li.upload_image.return_value = "urn:li:image:123"
+        mock_li.create_post.return_value = "urn:li:share:file123"
+        mock_make_clients.return_value = (mock_li, None, None)
 
         result = runner.invoke(
             cli,

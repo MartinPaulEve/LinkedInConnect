@@ -1,0 +1,94 @@
+"""Bluesky client for posting via the AT Protocol."""
+
+import os
+import re
+
+from atproto import Client, client_utils, models
+
+from logging_config import get_logger
+
+log = get_logger(__name__)
+
+# Bluesky post limit is 300 graphemes
+MAX_POST_LENGTH = 300
+
+
+class BlueskyClient:
+    """Client for posting to Bluesky via the AT Protocol."""
+
+    def __init__(
+        self,
+        handle: str | None = None,
+        app_password: str | None = None,
+    ):
+        self.handle = handle or os.environ.get("BLUESKY_HANDLE")
+        self.app_password = app_password or os.environ.get(
+            "BLUESKY_APP_PASSWORD"
+        )
+        if not self.handle:
+            raise ValueError(
+                "Bluesky handle is required. "
+                "Set BLUESKY_HANDLE environment variable "
+                "(e.g. yourname.bsky.social)."
+            )
+        if not self.app_password:
+            raise ValueError(
+                "Bluesky app password is required. "
+                "Set BLUESKY_APP_PASSWORD environment variable. "
+                "Create one at: Settings > Privacy and Security "
+                "> App Passwords on bsky.app"
+            )
+
+        self._client = Client()
+        self._client.login(self.handle, self.app_password)
+        log.info("bluesky_client_initialized", handle=self.handle)
+
+    def create_post(
+        self,
+        text: str,
+        link_url: str | None = None,
+        link_title: str | None = None,
+        link_description: str | None = None,
+    ) -> str:
+        """Create a Bluesky post. Returns the post URL.
+
+        If link_url is provided, a link card embed is created.
+        """
+        log.info(
+            "creating_bluesky_post",
+            text_length=len(text),
+            has_link=bool(link_url),
+        )
+
+        # Build facets for any URLs in the text
+        text_builder = client_utils.TextBuilder()
+        text_builder.text(text)
+
+        embed = None
+        if link_url:
+            embed = models.AppBskyEmbedExternal.Main(
+                external=models.AppBskyEmbedExternal.External(
+                    uri=link_url,
+                    title=link_title or "",
+                    description=link_description or "",
+                )
+            )
+
+        response = self._client.send_post(text_builder, embed=embed)
+
+        # Build the post URL from the response
+        # response.uri is like at://did:plc:xxx/app.bsky.feed.post/rkey
+        post_url = self._uri_to_url(response.uri)
+        log.info("bluesky_post_created", post_url=post_url)
+        return post_url
+
+    def _uri_to_url(self, at_uri: str) -> str:
+        """Convert an AT URI to a bsky.app URL."""
+        # at://did:plc:xxx/app.bsky.feed.post/rkey
+        match = re.match(
+            r"at://(did:[^/]+)/app\.bsky\.feed\.post/(.+)", at_uri
+        )
+        if match:
+            rkey = match.group(2)
+            return f"https://bsky.app/profile/{self.handle}/post/{rkey}"
+        return at_uri

@@ -24,6 +24,8 @@ class SyncRecord:
     linkedin_post_urn: str
     synced_at: str  # ISO format
     post_published: str  # ISO format
+    bluesky_post_url: str = ""
+    mastodon_post_url: str = ""
 
 
 class SyncTracker:
@@ -69,6 +71,8 @@ class SyncTracker:
         post_title: str,
         linkedin_post_urn: str,
         post_published: datetime,
+        bluesky_post_url: str = "",
+        mastodon_post_url: str = "",
     ):
         """Mark a post as synced."""
         record = SyncRecord(
@@ -77,6 +81,8 @@ class SyncTracker:
             linkedin_post_urn=linkedin_post_urn,
             synced_at=datetime.now(timezone.utc).isoformat(),
             post_published=post_published.isoformat(),
+            bluesky_post_url=bluesky_post_url,
+            mastodon_post_url=mastodon_post_url,
         )
         self._state.setdefault("synced_posts", {})[post_url] = asdict(record)
         self._save()
@@ -84,6 +90,8 @@ class SyncTracker:
             "post_marked_synced",
             post_url=post_url,
             linkedin_urn=linkedin_post_urn,
+            bluesky_url=bluesky_post_url,
+            mastodon_url=mastodon_post_url,
         )
 
     def get_synced_posts(self) -> dict:

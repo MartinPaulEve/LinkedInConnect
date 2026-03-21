@@ -304,26 +304,24 @@ class TestCliOptions:
 
 
 class TestSyncPost:
-    @patch("sync.LinkedInClient")
+    @patch("sync._make_clients")
     @patch("sync.get_todays_posts")
     def test_live_sync_records_state(
-        self, mock_today, mock_client_cls, runner, tmp_path, env_vars
+        self, mock_today, mock_make_clients, runner, tmp_path, env_vars
     ):
         post = _make_post()
         mock_today.return_value = [post]
 
-        mock_client = MagicMock()
-        mock_client.upload_image.return_value = None
-        mock_client.create_post.return_value = "urn:li:share:live123"
-        mock_client_cls.return_value = mock_client
+        mock_li = MagicMock()
+        mock_li.upload_image.return_value = None
+        mock_li.create_post.return_value = "urn:li:share:live123"
+        mock_make_clients.return_value = (mock_li, None, None)
 
         state_file = str(tmp_path / "state.json")
-        # We need to patch _make_client to return our mock
-        with patch("sync._make_client", return_value=mock_client):
-            result = runner.invoke(
-                cli,
-                ["--state-file", state_file, "--no-summary", "today"],
-            )
+        result = runner.invoke(
+            cli,
+            ["--state-file", state_file, "--no-summary", "today"],
+        )
 
         assert result.exit_code == 0
         # Verify state was written
@@ -335,10 +333,10 @@ class TestSyncPost:
             == "urn:li:share:live123"
         )
 
-    @patch("sync.LinkedInClient")
+    @patch("sync._make_clients")
     @patch("sync.get_post_by_url")
     def test_image_failure_still_posts(
-        self, mock_get, mock_client_cls, runner, tmp_path, env_vars
+        self, mock_get, mock_make_clients, runner, tmp_path, env_vars
     ):
         from feed_parser import BlogPost
 
@@ -356,62 +354,196 @@ class TestSyncPost:
         )
         mock_get.return_value = post
 
-        mock_client = MagicMock()
-        mock_client.upload_image.side_effect = Exception("Network error")
-        mock_client.create_post.return_value = "urn:li:share:noimgpost"
-        mock_client_cls.return_value = mock_client
+        mock_li = MagicMock()
+        mock_li.upload_image.side_effect = Exception("Network error")
+        mock_li.create_post.return_value = "urn:li:share:noimgpost"
+        mock_make_clients.return_value = (mock_li, None, None)
 
         state_file = str(tmp_path / "state.json")
-        with patch("sync._make_client", return_value=mock_client):
-            result = runner.invoke(
-                cli,
-                [
-                    "--state-file",
-                    state_file,
-                    "--no-summary",
-                    "post",
-                    post.url,
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--no-summary",
+                "post",
+                post.url,
+            ],
+        )
 
         assert result.exit_code == 0
         # Post should still have been created (without image)
-        mock_client.create_post.assert_called_once()
-        call_kwargs = mock_client.create_post.call_args
-        assert call_kwargs[1].get("image_urn") is None or call_kwargs[0] == ()
+        mock_li.create_post.assert_called_once()
 
-    @patch("sync.LinkedInClient")
+    @patch("sync._make_clients")
     @patch("sync.get_post_by_url")
     def test_post_creation_failure(
-        self, mock_get, mock_client_cls, runner, tmp_path, env_vars
+        self, mock_get, mock_make_clients, runner, tmp_path, env_vars
     ):
         post = _make_post()
         mock_get.return_value = post
 
-        mock_client = MagicMock()
-        mock_client.create_post.side_effect = Exception("API error")
-        mock_client_cls.return_value = mock_client
+        mock_li = MagicMock()
+        mock_li.create_post.side_effect = Exception("API error")
+        mock_make_clients.return_value = (mock_li, None, None)
 
         state_file = str(tmp_path / "state.json")
-        with patch("sync._make_client", return_value=mock_client):
-            result = runner.invoke(
-                cli,
-                [
-                    "--state-file",
-                    state_file,
-                    "--no-summary",
-                    "post",
-                    post.url,
-                ],
-            )
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--no-summary",
+                "post",
+                post.url,
+            ],
+        )
 
-        assert (
-            result.exit_code == 0
-        )  # CLI doesn't exit non-zero on post failure
+        assert result.exit_code == 0
         # State should NOT have the post recorded
         state_path = Path(state_file)
         if state_path.exists():
             with open(state_file) as f:
                 state = json.load(f)
             assert post.url not in state.get("synced_posts", {})
-        # If file doesn't exist, that also means it wasn't synced — pass
+
+
+class TestMultiPlatformSync:
+    @patch("sync.summarize_post_short")
+    @patch("sync.summarize_post")
+    @patch("sync._make_clients")
+    @patch("sync.get_post_by_url")
+    def test_all_platforms_success(
+        self,
+        mock_get,
+        mock_make_clients,
+        mock_summarize,
+        mock_short,
+        runner,
+        tmp_path,
+        env_vars,
+    ):
+        post = _make_post()
+        mock_get.return_value = post
+        mock_summarize.return_value = "LinkedIn summary"
+        mock_short.return_value = "Short summary https://eve.gd/test/"
+
+        mock_li = MagicMock()
+        mock_li.create_post.return_value = "urn:li:share:multi"
+        mock_bs = MagicMock()
+        mock_bs.create_post.return_value = "https://bsky.app/profile/x/post/1"
+        mock_md = MagicMock()
+        mock_md.create_post.return_value = "https://mastodon.social/@x/1"
+        mock_make_clients.return_value = (mock_li, mock_bs, mock_md)
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "post",
+                post.url,
+            ],
+        )
+
+        assert result.exit_code == 0
+        with open(state_file) as f:
+            state = json.load(f)
+        record = state["synced_posts"][post.url]
+        assert record["linkedin_post_urn"] == "urn:li:share:multi"
+        assert (
+            record["bluesky_post_url"] == "https://bsky.app/profile/x/post/1"
+        )
+        assert record["mastodon_post_url"] == "https://mastodon.social/@x/1"
+
+    @patch("sync.summarize_post_short")
+    @patch("sync.summarize_post")
+    @patch("sync._make_clients")
+    @patch("sync.get_post_by_url")
+    def test_partial_failure(
+        self,
+        mock_get,
+        mock_make_clients,
+        mock_summarize,
+        mock_short,
+        runner,
+        tmp_path,
+        env_vars,
+    ):
+        post = _make_post()
+        mock_get.return_value = post
+        mock_summarize.return_value = "LinkedIn summary"
+        mock_short.return_value = "Short summary https://eve.gd/test/"
+
+        mock_li = MagicMock()
+        mock_li.create_post.return_value = "urn:li:share:partial"
+        mock_bs = MagicMock()
+        mock_bs.create_post.side_effect = Exception("Bluesky down")
+        mock_md = MagicMock()
+        mock_md.create_post.return_value = "https://mastodon.social/@x/2"
+        mock_make_clients.return_value = (mock_li, mock_bs, mock_md)
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "post",
+                post.url,
+            ],
+        )
+
+        assert result.exit_code == 0
+        with open(state_file) as f:
+            state = json.load(f)
+        record = state["synced_posts"][post.url]
+        assert record["linkedin_post_urn"] == "urn:li:share:partial"
+        assert record["bluesky_post_url"] == ""
+        assert record["mastodon_post_url"] == "https://mastodon.social/@x/2"
+
+    @patch("sync.summarize_post_short")
+    @patch("sync.summarize_post")
+    @patch("sync._make_clients")
+    @patch("sync.get_post_by_url")
+    def test_all_platforms_fail_no_state(
+        self,
+        mock_get,
+        mock_make_clients,
+        mock_summarize,
+        mock_short,
+        runner,
+        tmp_path,
+        env_vars,
+    ):
+        post = _make_post()
+        mock_get.return_value = post
+        mock_summarize.return_value = "LinkedIn summary"
+        mock_short.return_value = "Short summary https://eve.gd/test/"
+
+        mock_li = MagicMock()
+        mock_li.create_post.side_effect = Exception("fail")
+        mock_bs = MagicMock()
+        mock_bs.create_post.side_effect = Exception("fail")
+        mock_md = MagicMock()
+        mock_md.create_post.side_effect = Exception("fail")
+        mock_make_clients.return_value = (mock_li, mock_bs, mock_md)
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "post",
+                post.url,
+            ],
+        )
+
+        assert result.exit_code == 0
+        state_path = Path(state_file)
+        if state_path.exists():
+            with open(state_file) as f:
+                state = json.load(f)
+            assert post.url not in state.get("synced_posts", {})

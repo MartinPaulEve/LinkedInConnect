@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Sync blog posts from eve.gd to LinkedIn."""
+"""Sync blog posts from eve.gd to LinkedIn, Bluesky, and Mastodon."""
 
 import logging
 import os
+from dataclasses import dataclass
 
 import click
 from dotenv import load_dotenv
@@ -14,22 +15,39 @@ from feed_parser import (
     parse_markdown_file,
 )
 from formatter import format_for_linkedin
-from linkedin_client import LinkedInClient
 from logging_config import configure_logging, get_logger
-from summarizer import summarize_post
+from summarizer import summarize_post, summarize_post_short
 from sync_tracker import SyncTracker
 
 log = get_logger(__name__)
 
 
+@dataclass
+class SyncResult:
+    """Result of syncing a post across all platforms."""
+
+    linkedin_urn: str = ""
+    linkedin_error: str = ""
+    bluesky_url: str = ""
+    bluesky_error: str = ""
+    mastodon_url: str = ""
+    mastodon_error: str = ""
+
+    @property
+    def any_success(self) -> bool:
+        return bool(self.linkedin_urn or self.bluesky_url or self.mastodon_url)
+
+
 def sync_post(
     post,
-    client: LinkedInClient,
     tracker: SyncTracker,
     dry_run: bool = False,
     summary: bool = True,
-) -> bool:
-    """Sync a single blog post to LinkedIn. Returns True on success."""
+    linkedin_client=None,
+    bluesky_client=None,
+    mastodon_client=None,
+) -> SyncResult:
+    """Sync a single blog post to all configured platforms."""
     log.info(
         "sync_post_start",
         title=post.title,
@@ -40,7 +58,7 @@ def sync_post(
         summary_mode=summary,
     )
 
-    # Format the post content for LinkedIn
+    # Generate content for each platform
     if summary:
         linkedin_text = summarize_post(
             title=post.title,
@@ -48,6 +66,18 @@ def sync_post(
             post_url=post.url,
             doi=post.doi,
             tags=post.tags,
+        )
+        bluesky_text = summarize_post_short(
+            title=post.title,
+            content_html=post.content_html,
+            post_url=post.url,
+            max_chars=300,
+        )
+        mastodon_text = summarize_post_short(
+            title=post.title,
+            content_html=post.content_html,
+            post_url=post.url,
+            max_chars=500,
         )
     else:
         linkedin_text = format_for_linkedin(
@@ -57,16 +87,70 @@ def sync_post(
             doi=post.doi,
             tags=post.tags,
         )
+        # For non-summary mode, use the LinkedIn text truncated
+        bluesky_text = None
+        mastodon_text = None
 
     if dry_run:
         log.info(
             "dry_run_preview",
             title=post.title,
-            char_count=len(linkedin_text),
-            text=linkedin_text,
+            linkedin_chars=len(linkedin_text),
+            linkedin_text=linkedin_text,
         )
-        return True
+        if bluesky_text:
+            log.info(
+                "dry_run_bluesky",
+                chars=len(bluesky_text),
+                text=bluesky_text,
+            )
+        if mastodon_text:
+            log.info(
+                "dry_run_mastodon",
+                chars=len(mastodon_text),
+                text=mastodon_text,
+            )
+        return SyncResult()
 
+    result = SyncResult()
+
+    # --- LinkedIn ---
+    if linkedin_client:
+        result.linkedin_urn = _post_to_linkedin(
+            linkedin_client, post, linkedin_text, summary, result
+        )
+
+    # --- Bluesky ---
+    if bluesky_client and bluesky_text:
+        result.bluesky_url = _post_to_bluesky(
+            bluesky_client, post, bluesky_text, result
+        )
+
+    # --- Mastodon ---
+    if mastodon_client and mastodon_text:
+        result.mastodon_url = _post_to_mastodon(
+            mastodon_client, mastodon_text, result
+        )
+
+    # Log the report
+    _log_report(post.title, result)
+
+    # Record the sync if anything succeeded
+    if result.any_success:
+        tracker.mark_synced(
+            post_url=post.url,
+            post_title=post.title,
+            linkedin_post_urn=result.linkedin_urn,
+            post_published=post.published,
+            bluesky_post_url=result.bluesky_url,
+            mastodon_post_url=result.mastodon_url,
+        )
+
+    return result
+
+
+def _post_to_linkedin(client, post, linkedin_text, summary, result):
+    """Post to LinkedIn. Returns the post URN or empty string."""
     # Upload featured image if available
     image_urn = None
     if post.featured_image_url:
@@ -74,45 +158,139 @@ def sync_post(
             image_urn = client.upload_image(image_url=post.featured_image_url)
         except Exception as e:
             log.warning(
-                "image_upload_failed",
+                "linkedin_image_upload_failed",
                 url=post.featured_image_url,
                 error=str(e),
             )
 
-    # Create the LinkedIn post
     try:
-        post_urn = client.create_post(
-            text=linkedin_text,
-            image_urn=image_urn,
-            image_alt_text=f"Featured image for: {post.title}",
-        )
-        log.info(
-            "post_synced_successfully", title=post.title, linkedin_urn=post_urn
-        )
+        if summary and not image_urn:
+            # In summary mode without an uploaded image, use article
+            # embed so LinkedIn shows a link preview card
+            post_urn = client.create_post(
+                text=linkedin_text,
+                article_url=post.url,
+                article_title=post.title,
+                article_description=post.summary,
+            )
+        else:
+            post_urn = client.create_post(
+                text=linkedin_text,
+                image_urn=image_urn,
+                image_alt_text=f"Featured image for: {post.title}",
+            )
+        log.info("linkedin_posted", post_urn=post_urn)
+        return post_urn
     except Exception as e:
-        log.error("post_creation_failed", title=post.title, error=str(e))
-        return False
+        log.error("linkedin_post_failed", error=str(e))
+        result.linkedin_error = str(e)
+        return ""
 
-    # Record the sync
-    tracker.mark_synced(
-        post_url=post.url,
-        post_title=post.title,
-        linkedin_post_urn=post_urn,
-        post_published=post.published,
+
+def _post_to_bluesky(client, post, bluesky_text, result):
+    """Post to Bluesky. Returns the post URL or empty string."""
+    try:
+        post_url = client.create_post(
+            text=bluesky_text,
+            link_url=post.url,
+            link_title=post.title,
+            link_description=post.summary,
+        )
+        log.info("bluesky_posted", post_url=post_url)
+        return post_url
+    except Exception as e:
+        log.error("bluesky_post_failed", error=str(e))
+        result.bluesky_error = str(e)
+        return ""
+
+
+def _post_to_mastodon(client, mastodon_text, result):
+    """Post to Mastodon. Returns the post URL or empty string."""
+    try:
+        post_url = client.create_post(text=mastodon_text)
+        log.info("mastodon_posted", post_url=post_url)
+        return post_url
+    except Exception as e:
+        log.error("mastodon_post_failed", error=str(e))
+        result.mastodon_error = str(e)
+        return ""
+
+
+def _log_report(title, result):
+    """Log a summary report of the sync results."""
+    log.info(
+        "sync_report",
+        title=title,
+        linkedin="ok"
+        if result.linkedin_urn
+        else "skipped"
+        if not result.linkedin_error
+        else f"FAILED: {result.linkedin_error}",
+        bluesky="ok"
+        if result.bluesky_url
+        else "skipped"
+        if not result.bluesky_error
+        else f"FAILED: {result.bluesky_error}",
+        mastodon="ok"
+        if result.mastodon_url
+        else "skipped"
+        if not result.mastodon_error
+        else f"FAILED: {result.mastodon_error}",
     )
-    return True
+    if result.linkedin_urn:
+        log.info("linkedin_link", urn=result.linkedin_urn)
+    if result.bluesky_url:
+        log.info("bluesky_link", url=result.bluesky_url)
+    if result.mastodon_url:
+        log.info("mastodon_link", url=result.mastodon_url)
 
 
-def _make_client(dry_run: bool) -> LinkedInClient | None:
-    """Create a LinkedIn client, or None for dry-run without credentials."""
+def _make_linkedin_client(dry_run: bool):
+    """Create a LinkedIn client, or None if not configured."""
     if dry_run and not os.environ.get("LINKEDIN_ACCESS_TOKEN"):
-        log.debug("skipping_client_creation_dry_run")
         return None
     try:
+        from linkedin_client import LinkedInClient
+
         return LinkedInClient()
     except ValueError as e:
-        log.error("client_creation_failed", error=str(e))
-        raise SystemExit(1) from e
+        log.warning("linkedin_client_skipped", error=str(e))
+        return None
+
+
+def _make_bluesky_client(dry_run: bool):
+    """Create a Bluesky client, or None if not configured."""
+    if dry_run and not os.environ.get("BLUESKY_HANDLE"):
+        return None
+    try:
+        from bluesky_client import BlueskyClient
+
+        return BlueskyClient()
+    except ValueError as e:
+        log.warning("bluesky_client_skipped", error=str(e))
+        return None
+
+
+def _make_mastodon_client(dry_run: bool):
+    """Create a Mastodon client, or None if not configured."""
+    if dry_run and not os.environ.get("MASTODON_ACCESS_TOKEN"):
+        return None
+    try:
+        from mastodon_client import MastodonClient
+
+        return MastodonClient()
+    except ValueError as e:
+        log.warning("mastodon_client_skipped", error=str(e))
+        return None
+
+
+def _make_clients(dry_run: bool) -> tuple:
+    """Create all platform clients. Returns (linkedin, bluesky, mastodon)."""
+    return (
+        _make_linkedin_client(dry_run),
+        _make_bluesky_client(dry_run),
+        _make_mastodon_client(dry_run),
+    )
 
 
 @click.group(invoke_without_command=True)
@@ -158,7 +336,7 @@ def _make_client(dry_run: bool) -> LinkedInClient | None:
 def cli(
     ctx, feed_url, state_file, dry_run, force, json_logs, summary, verbose
 ):
-    """Sync blog posts from eve.gd to LinkedIn.
+    """Sync blog posts to LinkedIn, Bluesky, and Mastodon.
 
     With no subcommand, syncs all of today's unsynced posts.
     """
@@ -188,7 +366,7 @@ def today(ctx):
     force = ctx.obj["force"]
     summary = ctx.obj["summary"]
     tracker = ctx.obj["tracker"]
-    client = _make_client(dry_run)
+    li_client, bs_client, md_client = _make_clients(dry_run)
 
     posts = get_todays_posts(feed_url)
 
@@ -206,7 +384,16 @@ def today(ctx):
             log.info("skipping_already_synced", title=post.title, url=post.url)
             skipped_count += 1
             continue
-        if sync_post(post, client, tracker, dry_run=dry_run, summary=summary):
+        result = sync_post(
+            post,
+            tracker,
+            dry_run=dry_run,
+            summary=summary,
+            linkedin_client=li_client,
+            bluesky_client=bs_client,
+            mastodon_client=md_client,
+        )
+        if result.any_success or dry_run:
             synced_count += 1
 
     log.info("sync_complete", synced=synced_count, skipped=skipped_count)
@@ -230,8 +417,6 @@ def post(ctx, url):
         log.info("force_resync", url=url)
         tracker.remove_record(url)
 
-    client = _make_client(dry_run)
-
     found_post = get_post_by_url(url, feed_url)
 
     if not found_post:
@@ -239,7 +424,16 @@ def post(ctx, url):
         raise SystemExit(1)
 
     summary = ctx.obj["summary"]
-    sync_post(found_post, client, tracker, dry_run=dry_run, summary=summary)
+    li_client, bs_client, md_client = _make_clients(dry_run)
+    sync_post(
+        found_post,
+        tracker,
+        dry_run=dry_run,
+        summary=summary,
+        linkedin_client=li_client,
+        bluesky_client=bs_client,
+        mastodon_client=md_client,
+    )
 
 
 @cli.command()
@@ -266,8 +460,16 @@ def file(ctx, path):
         tracker.remove_record(found_post.url)
 
     summary = ctx.obj["summary"]
-    client = _make_client(dry_run)
-    sync_post(found_post, client, tracker, dry_run=dry_run, summary=summary)
+    li_client, bs_client, md_client = _make_clients(dry_run)
+    sync_post(
+        found_post,
+        tracker,
+        dry_run=dry_run,
+        summary=summary,
+        linkedin_client=li_client,
+        bluesky_client=bs_client,
+        mastodon_client=md_client,
+    )
 
 
 @cli.command("list")
@@ -288,6 +490,8 @@ def list_synced(ctx):
             title=record["post_title"],
             url=url,
             linkedin_urn=record["linkedin_post_urn"],
+            bluesky_url=record.get("bluesky_post_url", ""),
+            mastodon_url=record.get("mastodon_post_url", ""),
             synced_at=record["synced_at"],
         )
 
