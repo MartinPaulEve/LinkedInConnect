@@ -1,3 +1,9 @@
+## v0.3.0 (2026-03-21)
+
+### Feat
+
+- **post**: accept local markdown file paths as well as URLs
+
 ## v0.2.0 (2026-03-21)
 
 ### Feat
