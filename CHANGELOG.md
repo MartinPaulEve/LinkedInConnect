@@ -1,3 +1,9 @@
+## v0.4.0 (2026-03-21)
+
+### Feat
+
+- **parser**: infer URL from Jekyll filename and handle nested image dicts
+
 ## v0.3.0 (2026-03-21)
 
 ### Feat
