@@ -13,6 +13,25 @@ log = get_logger(__name__)
 # Bluesky post limit is 300 graphemes
 MAX_POST_LENGTH = 300
 
+# Regex to find URLs in text
+_URL_RE = re.compile(r"https?://[^\s)<>]+")
+
+
+def _build_text_with_links(text: str) -> client_utils.TextBuilder:
+    """Build a TextBuilder that turns URLs into clickable link facets."""
+    builder = client_utils.TextBuilder()
+    last_end = 0
+    for match in _URL_RE.finditer(text):
+        start, end = match.span()
+        if start > last_end:
+            builder.text(text[last_end:start])
+        url = match.group(0)
+        builder.link(url, url)
+        last_end = end
+    if last_end < len(text):
+        builder.text(text[last_end:])
+    return builder
+
 
 class BlueskyClient:
     """Client for posting to Bluesky via the AT Protocol."""
@@ -65,9 +84,8 @@ class BlueskyClient:
             has_thumbnail=bool(thumbnail_url),
         )
 
-        # Build facets for any URLs in the text
-        text_builder = client_utils.TextBuilder()
-        text_builder.text(text)
+        # Build facets so URLs in the text become clickable links
+        text_builder = _build_text_with_links(text)
 
         embed = None
         if link_url:

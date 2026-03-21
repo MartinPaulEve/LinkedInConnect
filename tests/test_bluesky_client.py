@@ -184,6 +184,30 @@ class TestBlueskyThumbnail:
         assert call_kwargs["embed"].external.thumb is None
 
 
+class TestBuildTextWithLinks:
+    def test_plain_text_no_links(self):
+        from bluesky_client import _build_text_with_links
+
+        builder = _build_text_with_links("Hello world")
+        assert builder.build_text() == "Hello world"
+
+    def test_text_with_url_creates_facet(self):
+        from bluesky_client import _build_text_with_links
+
+        text = "Check out https://eve.gd/post/ for details"
+        builder = _build_text_with_links(text)
+        built = builder.build_text()
+        assert "https://eve.gd/post/" in built
+
+    def test_text_with_trailing_url(self):
+        from bluesky_client import _build_text_with_links
+
+        text = "My summary.\n\nhttps://eve.gd/2026/03/21/test/"
+        builder = _build_text_with_links(text)
+        built = builder.build_text()
+        assert "https://eve.gd/2026/03/21/test/" in built
+
+
 class TestUriToUrl:
     @patch("bluesky_client.Client")
     def test_converts_at_uri(self, mock_client_cls, monkeypatch):

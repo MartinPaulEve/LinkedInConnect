@@ -90,6 +90,12 @@ class LinkedInClient:
                 }
             },
         )
+        if not init_resp.ok:
+            log.error(
+                "linkedin_api_error",
+                status_code=init_resp.status_code,
+                response_body=init_resp.text,
+            )
         init_resp.raise_for_status()
         init_data = init_resp.json()
         upload_url = init_data["value"]["uploadUrl"]
@@ -177,6 +183,12 @@ class LinkedInClient:
             headers={"Content-Type": "application/json"},
             json=body,
         )
+        if not resp.ok:
+            log.error(
+                "linkedin_api_error",
+                status_code=resp.status_code,
+                response_body=resp.text,
+            )
         resp.raise_for_status()
 
         post_urn = resp.headers.get("x-restli-id", "")

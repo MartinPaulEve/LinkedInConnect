@@ -283,6 +283,64 @@ class TestCliPost:
         assert result.exit_code == 0
 
 
+class TestCliOnly:
+    """Tests for the --only platform filter."""
+
+    @patch("sync.get_post_by_url")
+    def test_only_linkedin(self, mock_get, runner, tmp_path):
+        mock_get.return_value = _make_post()
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "--only",
+                "linkedin",
+                "post",
+                "https://eve.gd/2025/03/20/test/",
+            ],
+        )
+        assert result.exit_code == 0
+
+    @patch("sync.get_post_by_url")
+    def test_only_multiple_platforms(self, mock_get, runner, tmp_path):
+        mock_get.return_value = _make_post()
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "--only",
+                "bluesky,mastodon",
+                "post",
+                "https://eve.gd/2025/03/20/test/",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_only_invalid_platform(self, runner, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--only",
+                "twitter",
+                "today",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "twitter" in result.output.lower()
+
+
 class TestCliList:
     def test_list_empty(self, runner, tmp_path):
         state_file = str(tmp_path / "state.json")
