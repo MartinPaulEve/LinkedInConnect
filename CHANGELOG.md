@@ -1,3 +1,10 @@
+## v0.5.1 (2026-03-21)
+
+### Fix
+
+- **linkedin**: revert to 202602 API version and add diagnostic hints
+- **linkedin**: change default API version to 202501 and add verify command
+
 ## v0.5.0 (2026-03-21)
 
 ### Feat
