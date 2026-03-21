@@ -16,13 +16,18 @@ from feed_parser import (
 from formatter import format_for_linkedin
 from linkedin_client import LinkedInClient
 from logging_config import configure_logging, get_logger
+from summarizer import summarize_post
 from sync_tracker import SyncTracker
 
 log = get_logger(__name__)
 
 
 def sync_post(
-    post, client: LinkedInClient, tracker: SyncTracker, dry_run: bool = False
+    post,
+    client: LinkedInClient,
+    tracker: SyncTracker,
+    dry_run: bool = False,
+    summary: bool = True,
 ) -> bool:
     """Sync a single blog post to LinkedIn. Returns True on success."""
     log.info(
@@ -32,16 +37,26 @@ def sync_post(
         published=post.published.isoformat(),
         has_image=bool(post.featured_image_url),
         has_doi=bool(post.doi),
+        summary_mode=summary,
     )
 
     # Format the post content for LinkedIn
-    linkedin_text = format_for_linkedin(
-        title=post.title,
-        content_html=post.content_html,
-        post_url=post.url,
-        doi=post.doi,
-        tags=post.tags,
-    )
+    if summary:
+        linkedin_text = summarize_post(
+            title=post.title,
+            content_html=post.content_html,
+            post_url=post.url,
+            doi=post.doi,
+            tags=post.tags,
+        )
+    else:
+        linkedin_text = format_for_linkedin(
+            title=post.title,
+            content_html=post.content_html,
+            post_url=post.url,
+            doi=post.doi,
+            tags=post.tags,
+        )
 
     if dry_run:
         log.info(
@@ -128,13 +143,21 @@ def _make_client(dry_run: bool) -> LinkedInClient | None:
     help="Output structured JSON logs.",
 )
 @click.option(
+    "--summary/--no-summary",
+    default=True,
+    show_default=True,
+    help="Use LLM to generate a summary (default) or post full content.",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
     help="Enable debug-level logging.",
 )
 @click.pass_context
-def cli(ctx, feed_url, state_file, dry_run, force, json_logs, verbose):
+def cli(
+    ctx, feed_url, state_file, dry_run, force, json_logs, summary, verbose
+):
     """Sync blog posts from eve.gd to LinkedIn.
 
     With no subcommand, syncs all of today's unsynced posts.
@@ -148,6 +171,7 @@ def cli(ctx, feed_url, state_file, dry_run, force, json_logs, verbose):
     ctx.obj["feed_url"] = feed_url
     ctx.obj["dry_run"] = dry_run
     ctx.obj["force"] = force
+    ctx.obj["summary"] = summary
     ctx.obj["tracker"] = SyncTracker(state_file=state_file)
 
     # If no subcommand, run the default "today" sync
@@ -162,6 +186,7 @@ def today(ctx):
     feed_url = ctx.obj["feed_url"]
     dry_run = ctx.obj["dry_run"]
     force = ctx.obj["force"]
+    summary = ctx.obj["summary"]
     tracker = ctx.obj["tracker"]
     client = _make_client(dry_run)
 
@@ -181,7 +206,7 @@ def today(ctx):
             log.info("skipping_already_synced", title=post.title, url=post.url)
             skipped_count += 1
             continue
-        if sync_post(post, client, tracker, dry_run=dry_run):
+        if sync_post(post, client, tracker, dry_run=dry_run, summary=summary):
             synced_count += 1
 
     log.info("sync_complete", synced=synced_count, skipped=skipped_count)
@@ -213,7 +238,8 @@ def post(ctx, url):
         log.error("post_not_found_in_feed", url=url)
         raise SystemExit(1)
 
-    sync_post(found_post, client, tracker, dry_run=dry_run)
+    summary = ctx.obj["summary"]
+    sync_post(found_post, client, tracker, dry_run=dry_run, summary=summary)
 
 
 @cli.command()
@@ -239,8 +265,9 @@ def file(ctx, path):
         log.info("force_resync", url=found_post.url)
         tracker.remove_record(found_post.url)
 
+    summary = ctx.obj["summary"]
     client = _make_client(dry_run)
-    sync_post(found_post, client, tracker, dry_run=dry_run)
+    sync_post(found_post, client, tracker, dry_run=dry_run, summary=summary)
 
 
 @cli.command("list")

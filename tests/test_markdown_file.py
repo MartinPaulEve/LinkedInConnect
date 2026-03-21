@@ -145,6 +145,7 @@ class TestCliFile:
                 "--state-file",
                 state_file,
                 "--dry-run",
+                "--no-summary",
                 "file",
                 str(md_file),
             ],
@@ -192,6 +193,7 @@ class TestCliFile:
                 "--state-file",
                 str(state_file),
                 "--dry-run",
+                "--no-summary",
                 "file",
                 str(md_file),
             ],
@@ -226,6 +228,7 @@ class TestCliFile:
                 str(state_file),
                 "--dry-run",
                 "--force",
+                "--no-summary",
                 "file",
                 str(md_file),
             ],
@@ -245,7 +248,13 @@ class TestCliFile:
 
         result = runner.invoke(
             cli,
-            ["--state-file", state_file, "file", str(md_file)],
+            [
+                "--state-file",
+                state_file,
+                "--no-summary",
+                "file",
+                str(md_file),
+            ],
         )
         assert result.exit_code == 0
 

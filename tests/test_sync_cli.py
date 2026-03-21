@@ -59,7 +59,14 @@ class TestCliToday:
         mock_today.return_value = [_make_post()]
         state_file = str(tmp_path / "state.json")
         result = runner.invoke(
-            cli, ["--state-file", state_file, "--dry-run", "today"]
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "today",
+            ],
         )
         assert result.exit_code == 0
 
@@ -110,7 +117,14 @@ class TestCliToday:
         )
         result = runner.invoke(
             cli,
-            ["--state-file", str(state_file), "--dry-run", "--force", "today"],
+            [
+                "--state-file",
+                str(state_file),
+                "--dry-run",
+                "--force",
+                "--no-summary",
+                "today",
+            ],
         )
         assert result.exit_code == 0
 
@@ -126,6 +140,7 @@ class TestCliPost:
                 "--state-file",
                 state_file,
                 "--dry-run",
+                "--no-summary",
                 "post",
                 "https://eve.gd/2025/03/20/test/",
             ],
@@ -208,6 +223,7 @@ class TestCliPost:
                 str(state_file),
                 "--dry-run",
                 "--force",
+                "--no-summary",
                 "post",
                 post.url,
             ],
@@ -304,7 +320,10 @@ class TestSyncPost:
         state_file = str(tmp_path / "state.json")
         # We need to patch _make_client to return our mock
         with patch("sync._make_client", return_value=mock_client):
-            result = runner.invoke(cli, ["--state-file", state_file, "today"])
+            result = runner.invoke(
+                cli,
+                ["--state-file", state_file, "--no-summary", "today"],
+            )
 
         assert result.exit_code == 0
         # Verify state was written
@@ -345,7 +364,14 @@ class TestSyncPost:
         state_file = str(tmp_path / "state.json")
         with patch("sync._make_client", return_value=mock_client):
             result = runner.invoke(
-                cli, ["--state-file", state_file, "post", post.url]
+                cli,
+                [
+                    "--state-file",
+                    state_file,
+                    "--no-summary",
+                    "post",
+                    post.url,
+                ],
             )
 
         assert result.exit_code == 0
@@ -369,7 +395,14 @@ class TestSyncPost:
         state_file = str(tmp_path / "state.json")
         with patch("sync._make_client", return_value=mock_client):
             result = runner.invoke(
-                cli, ["--state-file", state_file, "post", post.url]
+                cli,
+                [
+                    "--state-file",
+                    state_file,
+                    "--no-summary",
+                    "post",
+                    post.url,
+                ],
             )
 
         assert (
