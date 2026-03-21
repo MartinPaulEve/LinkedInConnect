@@ -165,6 +165,70 @@ class TestExtractImagePaths:
         paths = extract_image_paths(str(md))
         assert paths == []
 
+    def test_root_relative_path_resolved_via_site_root(self, tmp_path):
+        """Paths starting with / resolve against Jekyll site root."""
+        # Simulate Jekyll structure: blog/_posts/post.md, blog/images/pic.png
+        blog = tmp_path / "blog"
+        posts = blog / "_posts"
+        posts.mkdir(parents=True)
+        (blog / "_config.yml").write_text("title: Test Blog\n")
+        img_dir = blog / "images"
+        img_dir.mkdir()
+        (img_dir / "pic.png").write_text("fake")
+
+        md = posts / "2026-01-01-test.md"
+        md.write_text(
+            "---\n"
+            "title: Root Relative\n"
+            "url: https://example.com/test\n"
+            "---\n"
+            "\n"
+            "![Pic](/images/pic.png)\n"
+        )
+        paths = extract_image_paths(str(md))
+        assert len(paths) == 1
+        assert blog / "images" / "pic.png" in paths
+
+    def test_root_relative_front_matter_image(self, tmp_path):
+        """Front matter image with leading / resolves to site root."""
+        blog = tmp_path / "blog"
+        posts = blog / "_posts"
+        posts.mkdir(parents=True)
+        (blog / "_config.yml").write_text("title: Test\n")
+
+        md = posts / "2026-01-01-test.md"
+        md.write_text(
+            "---\n"
+            "title: FM Root\n"
+            "url: https://example.com/fm\n"
+            "image: /images/hero.jpg\n"
+            "---\n"
+            "\n"
+            "Body.\n"
+        )
+        paths = extract_image_paths(str(md))
+        assert len(paths) == 1
+        assert blog / "images" / "hero.jpg" in paths
+
+    def test_site_root_from_posts_dir_without_config(self, tmp_path):
+        """Falls back to _posts parent when no config file exists."""
+        blog = tmp_path / "mysite"
+        posts = blog / "_posts"
+        posts.mkdir(parents=True)
+
+        md = posts / "2026-01-01-test.md"
+        md.write_text(
+            "---\n"
+            "title: No Config\n"
+            "url: https://example.com/nc\n"
+            "---\n"
+            "\n"
+            "![Img](/assets/photo.jpg)\n"
+        )
+        paths = extract_image_paths(str(md))
+        assert len(paths) == 1
+        assert blog / "assets" / "photo.jpg" in paths
+
     def test_deduplicates_paths(self, tmp_path):
         md = tmp_path / "post.md"
         md.write_text(

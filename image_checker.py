@@ -24,16 +24,32 @@ def extract_image_paths(file_path: str) -> list[Path]:
     - Front matter: image or featured_image fields
 
     Remote URLs (http/https) are skipped.
-    Paths are resolved relative to the markdown file's directory.
+
+    Root-relative paths (starting with /) are resolved against the
+    detected site root (e.g. a Jekyll project). Other relative paths
+    are resolved against the markdown file's parent directory.
     """
-    path = Path(file_path)
+    path = Path(file_path).resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Markdown file not found: {file_path}")
 
     text = path.read_text(encoding="utf-8")
     base_dir = path.parent
+    site_root = _find_site_root(path)
     seen: set[Path] = set()
     result: list[Path] = []
+
+    def _resolve(src: str) -> Path:
+        """Resolve an image path against site root or file directory."""
+        if src.startswith("/"):
+            return (site_root / src.lstrip("/")).resolve()
+        return (base_dir / src).resolve()
+
+    def _collect(src: str) -> None:
+        resolved = _resolve(src)
+        if resolved not in seen:
+            seen.add(resolved)
+            result.append(resolved)
 
     # Extract front matter image fields
     fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
@@ -47,35 +63,60 @@ def extract_image_paths(file_path: str) -> list[Path]:
             if isinstance(val, dict):
                 val = val.get("src") or val.get("url") or val.get("path")
             if isinstance(val, str) and val and not _is_remote(val):
-                resolved = (base_dir / val).resolve()
-                if resolved not in seen:
-                    seen.add(resolved)
-                    result.append(resolved)
+                _collect(val)
 
     # Markdown image syntax: ![alt](path) or ![alt](path "title")
     for match in re.finditer(r'!\[[^\]]*\]\(([^)"\s]+)', text):
         src = match.group(1)
         if not _is_remote(src):
-            resolved = (base_dir / src).resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                result.append(resolved)
+            _collect(src)
 
     # HTML <img src="..."> tags
     for match in re.finditer(r'<img\s[^>]*src=["\']([^"\']+)["\']', text):
         src = match.group(1)
         if not _is_remote(src):
-            resolved = (base_dir / src).resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                result.append(resolved)
+            _collect(src)
 
     log.info(
         "images_extracted",
         file=file_path,
         count=len(result),
+        site_root=str(site_root),
     )
     return result
+
+
+def _find_site_root(file_path: Path) -> Path:
+    """Walk up from a file to find the static site root directory.
+
+    Looks for Jekyll/Hugo markers: _config.yml, _config.toml,
+    config.toml, hugo.toml, or a _posts directory at the same level.
+    Falls back to the markdown file's parent directory.
+    """
+    markers = (
+        "_config.yml",
+        "_config.toml",
+        "config.toml",
+        "hugo.toml",
+        "hugo.yaml",
+    )
+    current = file_path.parent
+    for _ in range(20):  # safety limit
+        for marker in markers:
+            if (current / marker).exists():
+                log.debug("site_root_found", root=str(current), marker=marker)
+                return current
+        if (current / "_posts").is_dir() and current != file_path.parent:
+            log.debug("site_root_found", root=str(current), marker="_posts")
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    # If the file is inside a _posts directory, the root is one level up
+    if file_path.parent.name == "_posts":
+        return file_path.parent.parent
+    return file_path.parent
 
 
 def _is_remote(src: str) -> bool:
