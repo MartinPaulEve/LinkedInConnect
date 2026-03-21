@@ -296,6 +296,14 @@ def parse_markdown_file(
     else:
         featured_image_url = raw_image
 
+    # Resolve relative image filenames to full URLs under /images/
+    if featured_image_url and not featured_image_url.startswith(
+        ("http://", "https://", "/")
+    ):
+        featured_image_url = (
+            f"{site_url.rstrip('/')}/images/{featured_image_url}"
+        )
+
     # DOI - check front matter first, then content
     doi_value = front_matter.get("doi") or _extract_doi(content_html, title)
 

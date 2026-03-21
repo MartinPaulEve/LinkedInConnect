@@ -121,7 +121,33 @@ class TestParseMarkdownFile:
             "Content\n"
         )
         post = parse_markdown_file(str(md_file))
-        assert post.featured_image_url == "yubico.png"
+        assert post.featured_image_url == "https://eve.gd/images/yubico.png"
+
+    def test_absolute_image_url_not_modified(self, tmp_path):
+        """Absolute image URLs are left unchanged."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Abs Image\n"
+            "url: https://eve.gd/abs/\n"
+            "image: https://cdn.example.com/photo.jpg\n"
+            "---\nContent\n"
+        )
+        post = parse_markdown_file(str(md_file))
+        assert post.featured_image_url == "https://cdn.example.com/photo.jpg"
+
+    def test_relative_image_resolved_to_images_dir(self, tmp_path):
+        """Bare filename images resolve to site_url/images/."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Rel Image\n"
+            "url: https://eve.gd/rel/\n"
+            "image: photo.jpg\n"
+            "---\nContent\n"
+        )
+        post = parse_markdown_file(str(md_file))
+        assert post.featured_image_url == "https://eve.gd/images/photo.jpg"
 
     def test_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):

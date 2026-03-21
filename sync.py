@@ -286,13 +286,27 @@ def _make_mastodon_client(dry_run: bool):
         return None
 
 
-def _make_clients(dry_run: bool) -> tuple:
-    """Create all platform clients. Returns (linkedin, bluesky, mastodon)."""
-    return (
-        _make_linkedin_client(dry_run),
-        _make_bluesky_client(dry_run),
-        _make_mastodon_client(dry_run),
+def _make_clients(dry_run: bool, only: set[str] | None = None) -> tuple:
+    """Create platform clients. Returns (linkedin, bluesky, mastodon).
+
+    When *only* is provided, only the named platforms are initialised.
+    """
+    li = (
+        _make_linkedin_client(dry_run)
+        if only is None or "linkedin" in only
+        else None
     )
+    bs = (
+        _make_bluesky_client(dry_run)
+        if only is None or "bluesky" in only
+        else None
+    )
+    md = (
+        _make_mastodon_client(dry_run)
+        if only is None or "mastodon" in only
+        else None
+    )
+    return (li, bs, md)
 
 
 @click.group(invoke_without_command=True)
@@ -334,9 +348,25 @@ def _make_clients(dry_run: bool) -> tuple:
     is_flag=True,
     help="Enable debug-level logging.",
 )
+@click.option(
+    "--only",
+    default=None,
+    help=(
+        "Comma-separated list of platforms to post to "
+        "(e.g. --only linkedin, --only bluesky,mastodon)."
+    ),
+)
 @click.pass_context
 def cli(
-    ctx, feed_url, state_file, dry_run, force, json_logs, summary, verbose
+    ctx,
+    feed_url,
+    state_file,
+    dry_run,
+    force,
+    json_logs,
+    summary,
+    verbose,
+    only,
 ):
     """Sync blog posts to LinkedIn, Bluesky, and Mastodon.
 
@@ -347,11 +377,26 @@ def cli(
         verbosity=logging.DEBUG if verbose else logging.INFO,
     )
     load_dotenv()
+
+    # Parse --only into a set of platform names
+    only_platforms = None
+    if only:
+        only_platforms = {p.strip().lower() for p in only.split(",")}
+        valid = {"linkedin", "bluesky", "mastodon"}
+        invalid = only_platforms - valid
+        if invalid:
+            raise click.BadParameter(
+                f"Unknown platform(s): {', '.join(sorted(invalid))}. "
+                f"Valid: {', '.join(sorted(valid))}",
+                param_hint="'--only'",
+            )
+
     ctx.ensure_object(dict)
     ctx.obj["feed_url"] = feed_url
     ctx.obj["dry_run"] = dry_run
     ctx.obj["force"] = force
     ctx.obj["summary"] = summary
+    ctx.obj["only"] = only_platforms
     ctx.obj["tracker"] = SyncTracker(state_file=state_file)
 
     # If no subcommand, run the default "today" sync
@@ -368,7 +413,8 @@ def today(ctx):
     force = ctx.obj["force"]
     summary = ctx.obj["summary"]
     tracker = ctx.obj["tracker"]
-    li_client, bs_client, md_client = _make_clients(dry_run)
+    only = ctx.obj.get("only")
+    li_client, bs_client, md_client = _make_clients(dry_run, only)
 
     posts = get_todays_posts(feed_url)
 
@@ -433,7 +479,8 @@ def post(ctx, url_or_path):
         tracker.remove_record(found_post.url)
 
     summary = ctx.obj["summary"]
-    li_client, bs_client, md_client = _make_clients(dry_run)
+    only = ctx.obj.get("only")
+    li_client, bs_client, md_client = _make_clients(dry_run, only)
     sync_post(
         found_post,
         tracker,
@@ -469,7 +516,8 @@ def file(ctx, path):
         tracker.remove_record(found_post.url)
 
     summary = ctx.obj["summary"]
-    li_client, bs_client, md_client = _make_clients(dry_run)
+    only = ctx.obj.get("only")
+    li_client, bs_client, md_client = _make_clients(dry_run, only)
     sync_post(
         found_post,
         tracker,
