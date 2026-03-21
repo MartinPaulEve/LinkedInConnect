@@ -1,3 +1,10 @@
+## v0.5.4 (2026-03-21)
+
+### Fix
+
+- suppress raw httpx/httpcore log lines in favour of structlog
+- resolve sync_state.json path from cwd instead of module directory
+
 ## v0.5.3 (2026-03-21)
 
 ### Refactor
