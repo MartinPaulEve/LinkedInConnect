@@ -18,6 +18,7 @@ class TestClientInit:
         )
         assert client.access_token == "test-token"
         assert client.person_urn == "urn:li:person:abc123"
+        assert client.member_urn == "urn:li:member:abc123"
 
     def test_init_from_env(self, monkeypatch):
         monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "env-token")
@@ -25,6 +26,14 @@ class TestClientInit:
         client = LinkedInClient()
         assert client.access_token == "env-token"
         assert client.person_urn == "urn:li:person:env123"
+        assert client.member_urn == "urn:li:member:env123"
+
+    def test_init_with_member_urn_passthrough(self):
+        client = LinkedInClient(
+            access_token="tok",
+            person_urn="urn:li:member:12345",
+        )
+        assert client.member_urn == "urn:li:member:12345"
 
     def test_missing_access_token_raises(self, monkeypatch):
         monkeypatch.delenv("LINKEDIN_ACCESS_TOKEN", raising=False)
@@ -87,7 +96,7 @@ class TestCreatePost:
         assert urn == "urn:li:ugcPost:111"
 
         called_json = mock_post.call_args[1]["json"]
-        assert called_json["author"] == "urn:li:person:me"
+        assert called_json["author"] == "urn:li:member:me"
         share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
         assert share["shareCommentary"]["text"] == "Hello LinkedIn!"
         assert share["shareMediaCategory"] == "NONE"
