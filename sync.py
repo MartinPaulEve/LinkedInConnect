@@ -497,5 +497,51 @@ def list_synced(ctx):
         )
 
 
+@cli.command("image-check")
+@click.argument("path", type=click.Path(exists=True))
+@click.pass_context
+def image_check(ctx, path):
+    """Check and resize images referenced in a local markdown file.
+
+    Finds all locally-referenced images, checks their dimensions,
+    and resizes any that exceed 1200x630 (preserving aspect ratio).
+    """
+    from image_checker import extract_image_paths, resize_image
+
+    dry_run = ctx.obj["dry_run"]
+
+    try:
+        image_paths = extract_image_paths(path)
+    except FileNotFoundError as e:
+        log.error("markdown_parse_failed", error=str(e))
+        raise SystemExit(1) from e
+
+    if not image_paths:
+        log.info("no_images_found", file=path)
+        return
+
+    log.info("images_found", file=path, count=len(image_paths))
+
+    for img_path in image_paths:
+        if not img_path.is_file():
+            log.warning("image_not_found", path=str(img_path))
+            continue
+
+        if dry_run:
+            from PIL import Image
+
+            img = Image.open(img_path)
+            w, h = img.size
+            log.info(
+                "would_check_image",
+                path=str(img_path),
+                size=f"{w}x{h}",
+                file_size_kb=f"{img_path.stat().st_size / 1024:.0f}",
+            )
+            continue
+
+        resize_image(img_path)
+
+
 if __name__ == "__main__":
     cli()
