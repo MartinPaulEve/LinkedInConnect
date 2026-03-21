@@ -1,3 +1,9 @@
+## v0.5.0 (2026-03-21)
+
+### Feat
+
+- add --only flag, fix Bluesky links, image paths, and tone
+
 ## v0.4.0 (2026-03-21)
 
 ### Feat
