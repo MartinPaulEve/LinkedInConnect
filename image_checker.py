@@ -44,7 +44,9 @@ def extract_image_paths(file_path: str) -> list[Path]:
             front_matter = {}
         for key in ("image", "featured_image"):
             val = front_matter.get(key)
-            if val and not _is_remote(val):
+            if isinstance(val, dict):
+                val = val.get("src") or val.get("url") or val.get("path")
+            if isinstance(val, str) and val and not _is_remote(val):
                 resolved = (base_dir / val).resolve()
                 if resolved not in seen:
                     seen.add(resolved)

@@ -61,7 +61,19 @@ LINKEDIN_CLIENT_SECRET="your_client_secret_here"
 # These will be filled in after running oauth_helper.py
 LINKEDIN_ACCESS_TOKEN=""
 LINKEDIN_PERSON_URN=""
+
+# Bluesky credentials
+# Handle: your full Bluesky handle WITHOUT the leading @ symbol
+# e.g. "yourname.bsky.social" — NOT "@yourname.bsky.social"
+BLUESKY_HANDLE=""
+BLUESKY_APP_PASSWORD=""
+
+# Mastodon credentials
+MASTODON_INSTANCE_URL=""
+MASTODON_ACCESS_TOKEN=""
 ```
+
+> **Bluesky note:** Your handle must not include the `@` symbol at the start. Use `yourname.bsky.social`, not `@yourname.bsky.social`. For the app password, generate one at bsky.app under Settings > Privacy and Security > App Passwords. You cannot use your account password.
 
 > **Security:** The `.env` file is in `.gitignore` and should **never** be committed. Keep your credentials safe.
 
