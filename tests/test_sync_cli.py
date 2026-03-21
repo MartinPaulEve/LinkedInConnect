@@ -341,6 +341,23 @@ class TestCliOnly:
         assert "twitter" in result.output.lower()
 
 
+class TestVerify:
+    @patch("sync.MastodonClient", create=True)
+    @patch("sync.BlueskyClient", create=True)
+    @patch("sync.LinkedInClient", create=True)
+    def test_verify_command(
+        self, mock_li_cls, mock_bs_cls, mock_md_cls, runner, tmp_path
+    ):
+        mock_li_cls.return_value.get_profile.return_value = {
+            "localizedFirstName": "Martin",
+            "localizedLastName": "Eve",
+        }
+        mock_bs_cls.return_value.handle = "test.bsky.social"
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(cli, ["--state-file", state_file, "verify"])
+        assert result.exit_code == 0
+
+
 class TestCliList:
     def test_list_empty(self, runner, tmp_path):
         state_file = str(tmp_path / "state.json")

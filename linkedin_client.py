@@ -12,7 +12,7 @@ from logging_config import get_logger
 log = get_logger(__name__)
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/rest"
-LINKEDIN_VERSION = "202602"
+DEFAULT_LINKEDIN_VERSION = "202501"
 
 
 class LinkedInClient:
@@ -22,11 +22,17 @@ class LinkedInClient:
         self,
         access_token: str | None = None,
         person_urn: str | None = None,
+        api_version: str | None = None,
     ):
         self.access_token = access_token or os.environ.get(
             "LINKEDIN_ACCESS_TOKEN"
         )
         self.person_urn = person_urn or os.environ.get("LINKEDIN_PERSON_URN")
+        self.api_version = (
+            api_version
+            or os.environ.get("LINKEDIN_API_VERSION")
+            or DEFAULT_LINKEDIN_VERSION
+        )
         if not self.access_token:
             raise ValueError(
                 "LinkedIn access token is required. "
@@ -40,13 +46,17 @@ class LinkedInClient:
             )
         self._session = requests.Session()
         self._session.headers.update(self._default_headers())
-        log.info("linkedin_client_initialized", person_urn=self.person_urn)
+        log.info(
+            "linkedin_client_initialized",
+            person_urn=self.person_urn,
+            api_version=self.api_version,
+        )
 
     def _default_headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.access_token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": LINKEDIN_VERSION,
+            "LinkedIn-Version": self.api_version,
         }
 
     def get_profile(self) -> dict:

@@ -553,6 +553,48 @@ def list_synced(ctx):
         )
 
 
+@cli.command()
+@click.pass_context
+def verify(ctx):
+    """Verify API credentials for all configured platforms."""
+    from linkedin_client import LinkedInClient
+
+    results = {}
+
+    # LinkedIn
+    try:
+        li = LinkedInClient()
+        profile = li.get_profile()
+        name = (
+            f"{profile.get('localizedFirstName', '')} "
+            f"{profile.get('localizedLastName', '')}"
+        ).strip()
+        results["linkedin"] = f"OK ({name})"
+    except Exception as e:
+        results["linkedin"] = f"FAILED: {e}"
+
+    # Bluesky
+    try:
+        from bluesky_client import BlueskyClient
+
+        bs = BlueskyClient()
+        results["bluesky"] = f"OK ({bs.handle})"
+    except Exception as e:
+        results["bluesky"] = f"FAILED: {e}"
+
+    # Mastodon
+    try:
+        from mastodon_client import MastodonClient
+
+        MastodonClient()
+        results["mastodon"] = "OK"
+    except Exception as e:
+        results["mastodon"] = f"FAILED: {e}"
+
+    for platform, status in results.items():
+        log.info("verify_result", platform=platform, status=status)
+
+
 @cli.command("image-check")
 @click.argument("path", type=click.Path(exists=True))
 @click.pass_context

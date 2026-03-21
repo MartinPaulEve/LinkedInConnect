@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from linkedin_client import LINKEDIN_VERSION, LinkedInClient
+from linkedin_client import DEFAULT_LINKEDIN_VERSION, LinkedInClient
 from tests.conftest import make_mock_response
 
 
@@ -43,7 +43,7 @@ class TestClientInit:
         )
         headers = client._default_headers()
         assert headers["Authorization"] == "Bearer tok"
-        assert headers["LinkedIn-Version"] == LINKEDIN_VERSION
+        assert headers["LinkedIn-Version"] == DEFAULT_LINKEDIN_VERSION
         assert headers["X-Restli-Protocol-Version"] == "2.0.0"
 
 
