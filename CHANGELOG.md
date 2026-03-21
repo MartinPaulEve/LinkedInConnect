@@ -1,3 +1,9 @@
+## v0.5.3 (2026-03-21)
+
+### Refactor
+
+- move source files into src/linkedin_sync package
+
 ## v0.5.2 (2026-03-21)
 
 ### Fix
