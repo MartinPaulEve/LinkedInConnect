@@ -10,9 +10,7 @@ from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
-DEFAULT_STATE_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "sync_state.json"
-)
+DEFAULT_STATE_FILE = os.path.join(os.getcwd(), "sync_state.json")
 
 
 @dataclass
