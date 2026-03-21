@@ -94,11 +94,13 @@ class TestBlueskyThumbnail:
         monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
         monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
 
+        from atproto_client.models.blob_ref import BlobRef
+
         mock_client = MagicMock()
         mock_client.send_post.return_value = MagicMock(
             uri="at://did:plc:abc/app.bsky.feed.post/xyz"
         )
-        mock_blob = MagicMock()
+        mock_blob = MagicMock(spec=BlobRef)
         mock_client.upload_blob.return_value = MagicMock(blob=mock_blob)
         mock_client_cls.return_value = mock_client
 
