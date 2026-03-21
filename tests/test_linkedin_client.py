@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from linkedin_client import DEFAULT_LINKEDIN_VERSION, LinkedInClient
+from linkedin_client import LinkedInClient
 from tests.conftest import make_mock_response
 
 
@@ -43,8 +43,31 @@ class TestClientInit:
         )
         headers = client._default_headers()
         assert headers["Authorization"] == "Bearer tok"
-        assert headers["LinkedIn-Version"] == DEFAULT_LINKEDIN_VERSION
         assert headers["X-Restli-Protocol-Version"] == "2.0.0"
+        assert "LinkedIn-Version" not in headers
+
+
+class TestGetProfile:
+    def _make_client(self):
+        return LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:me"
+        )
+
+    @patch.object(requests.Session, "get")
+    def test_get_profile_success(self, mock_get):
+        mock_get.return_value = make_mock_response(
+            json_data={"name": "Martin Eve", "sub": "abc123"}
+        )
+        client = self._make_client()
+        profile = client.get_profile()
+        assert profile["name"] == "Martin Eve"
+
+    @patch.object(requests.Session, "get")
+    def test_get_profile_error_raises(self, mock_get):
+        mock_get.return_value = make_mock_response(status_code=401)
+        client = self._make_client()
+        with pytest.raises(requests.exceptions.HTTPError):
+            client.get_profile()
 
 
 class TestCreatePost:
@@ -57,40 +80,43 @@ class TestCreatePost:
     def test_text_only_post(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:share:111"},
+            headers={"x-restli-id": "urn:li:ugcPost:111"},
         )
         client = self._make_client()
         urn = client.create_post(text="Hello LinkedIn!")
-        assert urn == "urn:li:share:111"
+        assert urn == "urn:li:ugcPost:111"
 
         called_json = mock_post.call_args[1]["json"]
         assert called_json["author"] == "urn:li:person:me"
-        assert called_json["commentary"] == "Hello LinkedIn!"
-        assert called_json["visibility"] == "PUBLIC"
-        assert "content" not in called_json
+        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
+        assert share["shareCommentary"]["text"] == "Hello LinkedIn!"
+        assert share["shareMediaCategory"] == "NONE"
+        assert "media" not in share
 
     @patch.object(requests.Session, "post")
     def test_post_with_image(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:share:222"},
+            headers={"x-restli-id": "urn:li:ugcPost:222"},
         )
         client = self._make_client()
         urn = client.create_post(
             text="Image post",
-            image_urn="urn:li:image:abc",
+            image_urn="urn:li:digitalmediaAsset:abc",
             image_alt_text="A nice photo",
         )
-        assert urn == "urn:li:share:222"
+        assert urn == "urn:li:ugcPost:222"
         called_json = mock_post.call_args[1]["json"]
-        assert called_json["content"]["media"]["id"] == "urn:li:image:abc"
-        assert called_json["content"]["media"]["altText"] == "A nice photo"
+        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
+        assert share["shareMediaCategory"] == "IMAGE"
+        assert share["media"][0]["media"] == "urn:li:digitalmediaAsset:abc"
+        assert share["media"][0]["title"]["text"] == "A nice photo"
 
     @patch.object(requests.Session, "post")
     def test_post_with_article(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:share:333"},
+            headers={"x-restli-id": "urn:li:ugcPost:333"},
         )
         client = self._make_client()
         client.create_post(
@@ -100,27 +126,28 @@ class TestCreatePost:
             article_description="About things",
         )
         called_json = mock_post.call_args[1]["json"]
-        assert (
-            called_json["content"]["article"]["source"]
-            == "https://eve.gd/post/"
-        )
-        assert called_json["content"]["article"]["title"] == "My Article"
+        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
+        assert share["shareMediaCategory"] == "ARTICLE"
+        assert share["media"][0]["originalUrl"] == "https://eve.gd/post/"
+        assert share["media"][0]["title"]["text"] == "My Article"
+        assert share["media"][0]["description"]["text"] == "About things"
 
     @patch.object(requests.Session, "post")
     def test_image_takes_precedence_over_article(self, mock_post):
         mock_post.return_value = make_mock_response(
             status_code=201,
-            headers={"x-restli-id": "urn:li:share:444"},
+            headers={"x-restli-id": "urn:li:ugcPost:444"},
         )
         client = self._make_client()
         client.create_post(
             text="Both",
-            image_urn="urn:li:image:img",
+            image_urn="urn:li:digitalmediaAsset:img",
             article_url="https://eve.gd/",
         )
         called_json = mock_post.call_args[1]["json"]
-        assert "media" in called_json["content"]
-        assert "article" not in called_json["content"]
+        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
+        assert share["shareMediaCategory"] == "IMAGE"
+        assert share["media"][0]["media"] == "urn:li:digitalmediaAsset:img"
 
     @patch.object(requests.Session, "post")
     def test_default_alt_text(self, mock_post):
@@ -129,9 +156,10 @@ class TestCreatePost:
             headers={"x-restli-id": "urn:x"},
         )
         client = self._make_client()
-        client.create_post(text="x", image_urn="urn:li:image:x")
+        client.create_post(text="x", image_urn="urn:li:digitalmediaAsset:x")
         called_json = mock_post.call_args[1]["json"]
-        assert called_json["content"]["media"]["altText"] == "Blog post image"
+        share = called_json["specificContent"]["com.linkedin.ugc.ShareContent"]
+        assert share["media"][0]["title"]["text"] == "Blog post image"
 
     @patch.object(requests.Session, "post")
     def test_api_error_raises(self, mock_post):
@@ -150,15 +178,19 @@ class TestUploadImage:
     @patch("linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
     def test_upload_local_file(self, mock_session_post, mock_put, tmp_path):
-        # Create a dummy image file
         img_file = tmp_path / "test.jpg"
         img_file.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-data")
 
         mock_session_post.return_value = make_mock_response(
             json_data={
                 "value": {
-                    "uploadUrl": "https://linkedin.com/upload/xyz",
-                    "image": "urn:li:image:abc123",
+                    "uploadMechanism": {
+                        "com.linkedin.digitalmedia.uploading"
+                        ".MediaUploadHttpRequest": {
+                            "uploadUrl": ("https://linkedin.com/upload/xyz"),
+                        }
+                    },
+                    "asset": "urn:li:digitalmediaAsset:abc123",
                 }
             }
         )
@@ -167,7 +199,7 @@ class TestUploadImage:
         client = self._make_client()
         urn = client.upload_image(image_path=str(img_file))
 
-        assert urn == "urn:li:image:abc123"
+        assert urn == "urn:li:digitalmediaAsset:abc123"
         mock_put.assert_called_once()
         assert mock_put.call_args[0][0] == "https://linkedin.com/upload/xyz"
 
@@ -180,7 +212,6 @@ class TestUploadImage:
     @patch("linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
     def test_upload_from_url(self, mock_session_post, mock_put, mock_get):
-        # Mock the download
         download_resp = MagicMock()
         download_resp.status_code = 200
         download_resp.headers = {"Content-Type": "image/jpeg"}
@@ -188,12 +219,16 @@ class TestUploadImage:
         download_resp.raise_for_status.return_value = None
         mock_get.return_value = download_resp
 
-        # Mock the init upload
         mock_session_post.return_value = make_mock_response(
             json_data={
                 "value": {
-                    "uploadUrl": "https://linkedin.com/upload/xyz",
-                    "image": "urn:li:image:fromurl",
+                    "uploadMechanism": {
+                        "com.linkedin.digitalmedia.uploading"
+                        ".MediaUploadHttpRequest": {
+                            "uploadUrl": ("https://linkedin.com/upload/xyz"),
+                        }
+                    },
+                    "asset": "urn:li:digitalmediaAsset:fromurl",
                 }
             }
         )
@@ -202,8 +237,17 @@ class TestUploadImage:
         client = self._make_client()
         urn = client.upload_image(image_url="https://eve.gd/images/photo.jpg")
 
-        assert urn == "urn:li:image:fromurl"
+        assert urn == "urn:li:digitalmediaAsset:fromurl"
         mock_get.assert_called_once()
+
+    @patch.object(requests.Session, "post")
+    def test_upload_register_error_raises(self, mock_session_post, tmp_path):
+        img_file = tmp_path / "test.jpg"
+        img_file.write_bytes(b"data")
+        mock_session_post.return_value = make_mock_response(status_code=403)
+        client = self._make_client()
+        with pytest.raises(requests.exceptions.HTTPError):
+            client.upload_image(image_path=str(img_file))
 
 
 class TestDownloadImage:
@@ -253,3 +297,30 @@ class TestDownloadImage:
         path = client._download_image("https://example.com/file")
         assert path.endswith(".jpg")
         os.unlink(path)
+
+
+class TestDiagnostics:
+    def _make_client(self):
+        return LinkedInClient(
+            access_token="tok", person_urn="urn:li:person:me"
+        )
+
+    @patch.object(requests.Session, "post")
+    def test_empty_403_includes_hints(self, mock_post):
+        mock_post.return_value = make_mock_response(
+            status_code=403,
+            json_data={"message": "", "status": 403},
+        )
+        client = self._make_client()
+        with pytest.raises(requests.exceptions.HTTPError):
+            client.create_post(text="test")
+
+    @patch.object(requests.Session, "post")
+    def test_401_includes_hints(self, mock_post):
+        mock_post.return_value = make_mock_response(
+            status_code=401,
+            json_data={"message": "Unauthorized"},
+        )
+        client = self._make_client()
+        with pytest.raises(requests.exceptions.HTTPError):
+            client.create_post(text="test")

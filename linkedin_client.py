@@ -1,4 +1,9 @@
-"""LinkedIn API client for posting content and uploading images."""
+"""LinkedIn API client for posting content and uploading images.
+
+Uses the v2 API (ugcPosts / assets) which works with the
+'Share on LinkedIn' product. The versioned REST API (/rest/)
+requires the 'Community Management' product.
+"""
 
 import os
 import tempfile
@@ -11,28 +16,22 @@ from logging_config import get_logger
 
 log = get_logger(__name__)
 
-LINKEDIN_API_BASE = "https://api.linkedin.com/rest"
-DEFAULT_LINKEDIN_VERSION = "202602"
+LINKEDIN_V2_BASE = "https://api.linkedin.com/v2"
+LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 
 
 class LinkedInClient:
-    """Client for LinkedIn Community Management API (Posts + Images)."""
+    """Client for LinkedIn v2 API (Share on LinkedIn product)."""
 
     def __init__(
         self,
         access_token: str | None = None,
         person_urn: str | None = None,
-        api_version: str | None = None,
     ):
         self.access_token = access_token or os.environ.get(
             "LINKEDIN_ACCESS_TOKEN"
         )
         self.person_urn = person_urn or os.environ.get("LINKEDIN_PERSON_URN")
-        self.api_version = (
-            api_version
-            or os.environ.get("LINKEDIN_API_VERSION")
-            or DEFAULT_LINKEDIN_VERSION
-        )
         if not self.access_token:
             raise ValueError(
                 "LinkedIn access token is required. "
@@ -49,14 +48,12 @@ class LinkedInClient:
         log.info(
             "linkedin_client_initialized",
             person_urn=self.person_urn,
-            api_version=self.api_version,
         )
 
     def _default_headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.access_token}",
             "X-Restli-Protocol-Version": "2.0.0",
-            "LinkedIn-Version": self.api_version,
         }
 
     def _raise_with_diagnostics(self, resp: requests.Response) -> None:
@@ -67,7 +64,6 @@ class LinkedInClient:
             body = {"raw": resp.text}
 
         status = resp.status_code
-        code = body.get("code", "")
         message = body.get("message", "")
 
         hints = []
@@ -87,12 +83,6 @@ class LinkedInClient:
                 "Access denied. Verify your app has the correct "
                 "permissions and the token is not expired."
             )
-        elif status == 426 and code == "NONEXISTENT_VERSION":
-            hints.append(
-                f"API version {self.api_version} is not active. "
-                "Set LINKEDIN_API_VERSION env var to a supported version "
-                "(e.g. 202601)."
-            )
         elif status == 401:
             hints.append("Access token is invalid or expired.")
 
@@ -101,22 +91,18 @@ class LinkedInClient:
             status_code=status,
             response_body=resp.text,
             url=resp.url,
-            api_version=self.api_version,
             hints=hints,
         )
         resp.raise_for_status()
 
     def get_profile(self) -> dict:
-        """Fetch the authenticated user's profile to verify credentials."""
+        """Fetch the authenticated user's profile via /v2/userinfo."""
         log.debug("fetching_profile")
-        resp = self._session.get(
-            f"{LINKEDIN_API_BASE}/me",
-            headers={"Content-Type": "application/json"},
-        )
+        resp = self._session.get(LINKEDIN_USERINFO_URL)
         if not resp.ok:
             self._raise_with_diagnostics(resp)
         profile = resp.json()
-        log.info("profile_fetched", profile_id=profile.get("id"))
+        log.info("profile_fetched", name=profile.get("name"))
         return profile
 
     def upload_image(
@@ -124,9 +110,10 @@ class LinkedInClient:
         image_path: str | None = None,
         image_url: str | None = None,
     ) -> str:
-        """Upload an image to LinkedIn and return the image URN.
+        """Upload an image to LinkedIn and return the asset URN.
 
-        Provide either a local file path or a URL to download from.
+        Uses the v2 assets API (registerUpload) which works with
+        the 'Share on LinkedIn' product.
         """
         if image_url and not image_path:
             log.info("downloading_image", url=image_url)
@@ -138,22 +125,33 @@ class LinkedInClient:
         file_size = Path(image_path).stat().st_size
         log.info("uploading_image", path=image_path, size_bytes=file_size)
 
-        # Step 1: Initialize upload
-        init_resp = self._session.post(
-            f"{LINKEDIN_API_BASE}/images?action=initializeUpload",
+        # Step 1: Register upload
+        register_resp = self._session.post(
+            f"{LINKEDIN_V2_BASE}/assets?action=registerUpload",
             headers={"Content-Type": "application/json"},
             json={
-                "initializeUploadRequest": {
+                "registerUploadRequest": {
+                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
                     "owner": self.person_urn,
+                    "serviceRelationships": [
+                        {
+                            "relationshipType": "OWNER",
+                            "identifier": ("urn:li:userGeneratedContent"),
+                        }
+                    ],
                 }
             },
         )
-        if not init_resp.ok:
-            self._raise_with_diagnostics(init_resp)
-        init_data = init_resp.json()
-        upload_url = init_data["value"]["uploadUrl"]
-        image_urn = init_data["value"]["image"]
-        log.debug("image_upload_initialized", image_urn=image_urn)
+        if not register_resp.ok:
+            self._raise_with_diagnostics(register_resp)
+
+        register_data = register_resp.json()
+        upload_info = register_data["value"]
+        upload_url = upload_info["uploadMechanism"][
+            "com.linkedin.digitalmedia.uploading" ".MediaUploadHttpRequest"
+        ]["uploadUrl"]
+        asset_urn = upload_info["asset"]
+        log.debug("image_upload_registered", asset_urn=asset_urn)
 
         # Step 2: Upload binary
         with open(image_path, "rb") as f:
@@ -170,11 +168,11 @@ class LinkedInClient:
         upload_resp.raise_for_status()
         log.info(
             "image_uploaded",
-            image_urn=image_urn,
+            asset_urn=asset_urn,
             size_bytes=len(image_data),
         )
 
-        return image_urn
+        return asset_urn
 
     def create_post(
         self,
@@ -185,11 +183,11 @@ class LinkedInClient:
         article_title: str | None = None,
         article_description: str | None = None,
     ) -> str:
-        """Create a LinkedIn post. Returns the post URN.
+        """Create a LinkedIn post via ugcPosts. Returns the post URN.
 
         Args:
             text: The post commentary text.
-            image_urn: Optional image URN from upload_image().
+            image_urn: Optional asset URN from upload_image().
             image_alt_text: Alt text for the image.
             article_url: Optional URL to share as an article link.
             article_title: Title for the article link.
@@ -202,37 +200,44 @@ class LinkedInClient:
             has_article=bool(article_url),
         )
 
-        body = {
-            "author": self.person_urn,
-            "commentary": text,
-            "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": [],
-            },
-            "lifecycleState": "PUBLISHED",
-            "isReshareDisabledByAuthor": False,
+        share_content: dict = {
+            "shareCommentary": {"text": text},
+            "shareMediaCategory": "NONE",
         }
 
         if image_urn:
-            body["content"] = {
-                "media": {
-                    "id": image_urn,
-                    "altText": image_alt_text or "Blog post image",
+            share_content["shareMediaCategory"] = "IMAGE"
+            share_content["media"] = [
+                {
+                    "status": "READY",
+                    "media": image_urn,
+                    "title": {"text": image_alt_text or "Blog post image"},
                 }
-            }
+            ]
         elif article_url:
-            body["content"] = {
-                "article": {
-                    "source": article_url,
-                    "title": article_title or "",
-                    "description": article_description or "",
+            share_content["shareMediaCategory"] = "ARTICLE"
+            share_content["media"] = [
+                {
+                    "status": "READY",
+                    "originalUrl": article_url,
+                    "title": {"text": article_title or ""},
+                    "description": {"text": article_description or ""},
                 }
-            }
+            ]
+
+        body = {
+            "author": self.person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": share_content
+            },
+            "visibility": {
+                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+            },
+        }
 
         resp = self._session.post(
-            f"{LINKEDIN_API_BASE}/posts",
+            f"{LINKEDIN_V2_BASE}/ugcPosts",
             headers={"Content-Type": "application/json"},
             json=body,
         )
