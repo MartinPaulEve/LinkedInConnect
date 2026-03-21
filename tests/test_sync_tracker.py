@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sync_tracker import SyncTracker
+from linkedin_sync.sync_tracker import SyncTracker
 
 
 class TestSyncTrackerInit:

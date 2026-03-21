@@ -1,6 +1,6 @@
 """Tests for formatter module."""
 
-from formatter import (
+from linkedin_sync.formatter import (
     MAX_LINKEDIN_POST_LENGTH,
     _html_to_linkedin_text,
     _sanitize_hashtag,

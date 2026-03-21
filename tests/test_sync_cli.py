@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from sync import cli
+from linkedin_sync.sync import cli
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def _make_post(
     title="Test Post", url="https://eve.gd/2025/03/20/test/", published=None
 ):
     """Helper to build a mock BlogPost."""
-    from feed_parser import BlogPost
+    from linkedin_sync.feed_parser import BlogPost
 
     return BlogPost(
         id=url,
@@ -45,7 +45,7 @@ def _make_post(
 
 
 class TestCliToday:
-    @patch("sync.get_todays_posts")
+    @patch("linkedin_sync.sync.get_todays_posts")
     def test_no_posts_today(self, mock_today, runner, tmp_path):
         mock_today.return_value = []
         state_file = str(tmp_path / "state.json")
@@ -54,7 +54,7 @@ class TestCliToday:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_todays_posts")
+    @patch("linkedin_sync.sync.get_todays_posts")
     def test_dry_run_today(self, mock_today, runner, tmp_path):
         mock_today.return_value = [_make_post()]
         state_file = str(tmp_path / "state.json")
@@ -70,7 +70,7 @@ class TestCliToday:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_todays_posts")
+    @patch("linkedin_sync.sync.get_todays_posts")
     def test_skips_already_synced(self, mock_today, runner, tmp_path):
         post = _make_post()
         mock_today.return_value = [post]
@@ -95,7 +95,7 @@ class TestCliToday:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_todays_posts")
+    @patch("linkedin_sync.sync.get_todays_posts")
     def test_force_resyncs(self, mock_today, runner, tmp_path):
         post = _make_post()
         mock_today.return_value = [post]
@@ -130,7 +130,7 @@ class TestCliToday:
 
 
 class TestCliPost:
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_dry_run_specific_post(self, mock_get, runner, tmp_path):
         mock_get.return_value = _make_post()
         state_file = str(tmp_path / "state.json")
@@ -147,7 +147,7 @@ class TestCliPost:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_post_not_found(self, mock_get, runner, tmp_path):
         mock_get.return_value = None
         state_file = str(tmp_path / "state.json")
@@ -163,7 +163,7 @@ class TestCliPost:
         )
         assert result.exit_code != 0
 
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_already_synced_without_force(self, mock_get, runner, tmp_path):
         post = _make_post()
         mock_get.return_value = post
@@ -195,7 +195,7 @@ class TestCliPost:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_force_resync_specific_post(self, mock_get, runner, tmp_path):
         post = _make_post()
         mock_get.return_value = post
@@ -286,7 +286,7 @@ class TestCliPost:
 class TestCliOnly:
     """Tests for the --only platform filter."""
 
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_only_linkedin(self, mock_get, runner, tmp_path):
         mock_get.return_value = _make_post()
         state_file = str(tmp_path / "state.json")
@@ -305,7 +305,7 @@ class TestCliOnly:
         )
         assert result.exit_code == 0
 
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_only_multiple_platforms(self, mock_get, runner, tmp_path):
         mock_get.return_value = _make_post()
         state_file = str(tmp_path / "state.json")
@@ -342,9 +342,9 @@ class TestCliOnly:
 
 
 class TestVerify:
-    @patch("sync.MastodonClient", create=True)
-    @patch("sync.BlueskyClient", create=True)
-    @patch("sync.LinkedInClient", create=True)
+    @patch("linkedin_sync.sync.MastodonClient", create=True)
+    @patch("linkedin_sync.sync.BlueskyClient", create=True)
+    @patch("linkedin_sync.sync.LinkedInClient", create=True)
     def test_verify_command(
         self, mock_li_cls, mock_bs_cls, mock_md_cls, runner, tmp_path
     ):
@@ -407,7 +407,7 @@ class TestCliOptions:
 
     def test_custom_feed_url(self, runner, tmp_path):
         state_file = str(tmp_path / "state.json")
-        with patch("sync.get_todays_posts", return_value=[]):
+        with patch("linkedin_sync.sync.get_todays_posts", return_value=[]):
             result = runner.invoke(
                 cli,
                 [
@@ -423,7 +423,7 @@ class TestCliOptions:
 
     def test_default_command_is_today(self, runner, tmp_path):
         state_file = str(tmp_path / "state.json")
-        with patch("sync.get_todays_posts", return_value=[]):
+        with patch("linkedin_sync.sync.get_todays_posts", return_value=[]):
             result = runner.invoke(
                 cli, ["--state-file", state_file, "--dry-run"]
             )
@@ -431,8 +431,8 @@ class TestCliOptions:
 
 
 class TestSyncPost:
-    @patch("sync._make_clients")
-    @patch("sync.get_todays_posts")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_todays_posts")
     def test_live_sync_records_state(
         self, mock_today, mock_make_clients, runner, tmp_path, env_vars
     ):
@@ -460,12 +460,12 @@ class TestSyncPost:
             == "urn:li:share:live123"
         )
 
-    @patch("sync._make_clients")
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_image_failure_still_posts(
         self, mock_get, mock_make_clients, runner, tmp_path, env_vars
     ):
-        from feed_parser import BlogPost
+        from linkedin_sync.feed_parser import BlogPost
 
         post = BlogPost(
             id="https://eve.gd/img-post/",
@@ -502,8 +502,8 @@ class TestSyncPost:
         # Post should still have been created (without image)
         mock_li.create_post.assert_called_once()
 
-    @patch("sync._make_clients")
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_post_creation_failure(
         self, mock_get, mock_make_clients, runner, tmp_path, env_vars
     ):
@@ -536,10 +536,10 @@ class TestSyncPost:
 
 
 class TestMultiPlatformSync:
-    @patch("sync.summarize_post_short")
-    @patch("sync.summarize_post")
-    @patch("sync._make_clients")
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.summarize_post_short")
+    @patch("linkedin_sync.sync.summarize_post")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_all_platforms_success(
         self,
         mock_get,
@@ -584,10 +584,10 @@ class TestMultiPlatformSync:
         )
         assert record["mastodon_post_url"] == "https://mastodon.social/@x/1"
 
-    @patch("sync.summarize_post_short")
-    @patch("sync.summarize_post")
-    @patch("sync._make_clients")
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.summarize_post_short")
+    @patch("linkedin_sync.sync.summarize_post")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_partial_failure(
         self,
         mock_get,
@@ -630,10 +630,10 @@ class TestMultiPlatformSync:
         assert record["bluesky_post_url"] == ""
         assert record["mastodon_post_url"] == "https://mastodon.social/@x/2"
 
-    @patch("sync.summarize_post_short")
-    @patch("sync.summarize_post")
-    @patch("sync._make_clients")
-    @patch("sync.get_post_by_url")
+    @patch("linkedin_sync.sync.summarize_post_short")
+    @patch("linkedin_sync.sync.summarize_post")
+    @patch("linkedin_sync.sync._make_clients")
+    @patch("linkedin_sync.sync.get_post_by_url")
     def test_all_platforms_fail_no_state(
         self,
         mock_get,

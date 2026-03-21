@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from linkedin_client import LinkedInClient
+from linkedin_sync.linkedin_client import LinkedInClient
 from tests.conftest import make_mock_response
 
 # Helper to mock the userinfo call during __init__
@@ -202,7 +202,7 @@ class TestUploadImage:
     def _make_client(self):
         return LinkedInClient(access_token="tok")
 
-    @patch("linkedin_client.requests.put")
+    @patch("linkedin_sync.linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
     def test_upload_local_file(self, mock_session_post, mock_put, tmp_path):
         img_file = tmp_path / "test.jpg"
@@ -230,8 +230,8 @@ class TestUploadImage:
         with pytest.raises(FileNotFoundError):
             client.upload_image(image_path="/nonexistent/image.jpg")
 
-    @patch("linkedin_client.requests.get")
-    @patch("linkedin_client.requests.put")
+    @patch("linkedin_sync.linkedin_client.requests.get")
+    @patch("linkedin_sync.linkedin_client.requests.put")
     @patch.object(requests.Session, "post")
     def test_upload_from_url(self, mock_session_post, mock_put, mock_get):
         download_resp = MagicMock()
@@ -271,7 +271,7 @@ class TestDownloadImage:
     def _make_client(self):
         return LinkedInClient(access_token="tok")
 
-    @patch("linkedin_client.requests.get")
+    @patch("linkedin_sync.linkedin_client.requests.get")
     def test_extension_from_url(self, mock_get):
         resp = MagicMock()
         resp.status_code = 200
@@ -285,7 +285,7 @@ class TestDownloadImage:
         assert path.endswith(".png")
         os.unlink(path)
 
-    @patch("linkedin_client.requests.get")
+    @patch("linkedin_sync.linkedin_client.requests.get")
     def test_extension_from_content_type(self, mock_get):
         resp = MagicMock()
         resp.status_code = 200
@@ -299,7 +299,7 @@ class TestDownloadImage:
         assert path.endswith(".webp")
         os.unlink(path)
 
-    @patch("linkedin_client.requests.get")
+    @patch("linkedin_sync.linkedin_client.requests.get")
     def test_defaults_to_jpg(self, mock_get):
         resp = MagicMock()
         resp.status_code = 200

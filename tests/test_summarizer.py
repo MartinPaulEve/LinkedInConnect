@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from summarizer import (
+from linkedin_sync.summarizer import (
     _html_to_plain_text,
     summarize_post,
     summarize_post_short,
@@ -28,7 +28,7 @@ class TestHtmlToPlainText:
 
 
 class TestSummarizePost:
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_anthropic_provider(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "A great summary of this post."
@@ -43,7 +43,7 @@ class TestSummarizePost:
         assert "A great summary of this post." in result
         assert "https://eve.gd/test/" in result
 
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_includes_doi(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -57,7 +57,7 @@ class TestSummarizePost:
 
         assert "DOI: https://doi.org/10.1234/test" in result
 
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_includes_hashtags(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -72,7 +72,7 @@ class TestSummarizePost:
         assert "#python" in result
         assert "#openaccess" in result
 
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_truncates_long_content(self, mock_call, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "anthropic")
         mock_call.return_value = "Summary."
@@ -89,7 +89,7 @@ class TestSummarizePost:
 
 
 class TestSummarizePostShort:
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_includes_url(self, mock_call):
         mock_call.return_value = "Short summary."
 
@@ -103,7 +103,7 @@ class TestSummarizePostShort:
         assert "https://eve.gd/t/" in result
         assert "Short summary." in result
 
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_respects_max_chars(self, mock_call):
         mock_call.return_value = "Short."
 
@@ -116,7 +116,7 @@ class TestSummarizePostShort:
 
         assert len(result) <= 300
 
-    @patch("summarizer._call_llm")
+    @patch("linkedin_sync.summarizer._call_llm")
     def test_hard_truncates_if_llm_exceeds_budget(self, mock_call):
         # Return something way too long
         mock_call.return_value = "x" * 500
@@ -136,7 +136,7 @@ class TestCallLlm:
     def test_unknown_provider_raises(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "gemini")
 
-        from summarizer import _call_llm
+        from linkedin_sync.summarizer import _call_llm
 
         with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
             _call_llm("system", "user")
@@ -146,7 +146,7 @@ class TestCallAnthropic:
     def test_missing_api_key_raises(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
-        from summarizer import _call_anthropic
+        from linkedin_sync.summarizer import _call_anthropic
 
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             _call_anthropic("system", "test prompt")
@@ -164,7 +164,7 @@ class TestCallAnthropic:
         mock_anthropic_mod.Anthropic.return_value = mock_client
 
         with patch.dict("sys.modules", {"anthropic": mock_anthropic_mod}):
-            from summarizer import _call_anthropic
+            from linkedin_sync.summarizer import _call_anthropic
 
             result = _call_anthropic("system prompt", "test prompt")
 
@@ -178,7 +178,7 @@ class TestCallOpenai:
     def test_missing_api_key_raises(self, monkeypatch):
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        from summarizer import _call_openai
+        from linkedin_sync.summarizer import _call_openai
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             _call_openai("system", "test prompt")
@@ -198,7 +198,7 @@ class TestCallOpenai:
         mock_openai_mod.OpenAI.return_value = mock_client
 
         with patch.dict("sys.modules", {"openai": mock_openai_mod}):
-            from summarizer import _call_openai
+            from linkedin_sync.summarizer import _call_openai
 
             result = _call_openai("system prompt", "test prompt")
 
@@ -210,9 +210,9 @@ class TestCallOpenai:
 class TestSyncPostSummaryMode:
     """Test that sync_post correctly uses summary mode."""
 
-    @patch("sync.summarize_post_short")
-    @patch("sync.summarize_post")
-    @patch("sync.format_for_linkedin")
+    @patch("linkedin_sync.sync.summarize_post_short")
+    @patch("linkedin_sync.sync.summarize_post")
+    @patch("linkedin_sync.sync.format_for_linkedin")
     def test_summary_true_calls_summarize(
         self, mock_format, mock_summarize, mock_short, monkeypatch
     ):
@@ -222,8 +222,8 @@ class TestSyncPostSummaryMode:
         from datetime import datetime, timezone
         from unittest.mock import MagicMock
 
-        from feed_parser import BlogPost
-        from sync import sync_post
+        from linkedin_sync.feed_parser import BlogPost
+        from linkedin_sync.sync import sync_post
 
         post = BlogPost(
             id="https://eve.gd/test/",
@@ -244,9 +244,9 @@ class TestSyncPostSummaryMode:
         mock_summarize.assert_called_once()
         mock_format.assert_not_called()
 
-    @patch("sync.summarize_post_short")
-    @patch("sync.summarize_post")
-    @patch("sync.format_for_linkedin")
+    @patch("linkedin_sync.sync.summarize_post_short")
+    @patch("linkedin_sync.sync.summarize_post")
+    @patch("linkedin_sync.sync.format_for_linkedin")
     def test_summary_false_calls_format(
         self, mock_format, mock_summarize, mock_short
     ):
@@ -255,8 +255,8 @@ class TestSyncPostSummaryMode:
         from datetime import datetime, timezone
         from unittest.mock import MagicMock
 
-        from feed_parser import BlogPost
-        from sync import sync_post
+        from linkedin_sync.feed_parser import BlogPost
+        from linkedin_sync.sync import sync_post
 
         post = BlogPost(
             id="https://eve.gd/test/",

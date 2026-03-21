@@ -71,16 +71,16 @@ Current state: **190 tests passing, 93% line coverage**. Coverage by module:
 
 | Module | Coverage |
 |--------|----------|
-| `bluesky_client.py` | 100% |
-| `sync_tracker.py` | 100% |
-| `logging_config.py` | 100% |
-| `mastodon_client.py` | 100% |
-| `image_checker.py` | 96% |
-| `formatter.py` | 96% |
-| `summarizer.py` | 96% |
-| `feed_parser.py` | 91% |
-| `sync.py` | 90% |
-| `linkedin_client.py` | 90% |
+| `src/linkedin_sync/bluesky_client.py` | 100% |
+| `src/linkedin_sync/sync_tracker.py` | 100% |
+| `src/linkedin_sync/logging_config.py` | 100% |
+| `src/linkedin_sync/mastodon_client.py` | 100% |
+| `src/linkedin_sync/image_checker.py` | 96% |
+| `src/linkedin_sync/formatter.py` | 96% |
+| `src/linkedin_sync/summarizer.py` | 96% |
+| `src/linkedin_sync/feed_parser.py` | 91% |
+| `src/linkedin_sync/sync.py` | 90% |
+| `src/linkedin_sync/linkedin_client.py` | 90% |
 
 ## Dependencies
 

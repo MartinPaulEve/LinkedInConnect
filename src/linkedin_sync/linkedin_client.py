@@ -12,7 +12,7 @@ from pathlib import Path
 
 import requests
 
-from logging_config import get_logger
+from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
