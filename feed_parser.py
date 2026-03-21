@@ -15,6 +15,10 @@ from logging_config import get_logger
 log = get_logger(__name__)
 
 FEED_URL = "https://eve.gd/feed/feed.atom"
+DEFAULT_SITE_URL = "https://eve.gd"
+
+# Jekyll filename pattern: YYYY-MM-DD-slug.ext
+_JEKYLL_FILENAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-(.+?)(?:\.\w+)+$")
 
 
 @dataclass
@@ -221,11 +225,25 @@ def get_post_by_url(url: str, feed_url: str = FEED_URL) -> BlogPost | None:
     return None
 
 
-def parse_markdown_file(file_path: str) -> BlogPost:
+def _url_from_jekyll_filename(filename: str, site_url: str) -> str | None:
+    """Derive a URL from a Jekyll-style filename (YYYY-MM-DD-slug.ext)."""
+    m = _JEKYLL_FILENAME_RE.match(filename)
+    if not m:
+        return None
+    year, month, day, slug = m.groups()
+    return f"{site_url.rstrip('/')}/{year}/{month}/{day}/{slug}/"
+
+
+def parse_markdown_file(
+    file_path: str, site_url: str = DEFAULT_SITE_URL
+) -> BlogPost:
     """Parse a local markdown file with YAML front matter into a BlogPost.
 
     Expected front matter fields:
-        title (required), url (required), date, tags, image, doi, author
+        title (required), date, tags, image, doi, author
+
+    If *url* / *permalink* is absent the URL is inferred from a Jekyll-style
+    filename (``YYYY-MM-DD-slug.ext``) combined with *site_url*.
     """
     path = Path(file_path)
     if not path.is_file():
@@ -235,7 +253,11 @@ def parse_markdown_file(file_path: str) -> BlogPost:
     front_matter, body = _split_front_matter(text)
 
     title = front_matter.get("title")
-    url = front_matter.get("url") or front_matter.get("permalink")
+    url = (
+        front_matter.get("url")
+        or front_matter.get("permalink")
+        or _url_from_jekyll_filename(path.name, site_url)
+    )
     if not title or not url:
         raise ValueError(
             f"Markdown file must have 'title' and 'url' in front matter: "
@@ -266,10 +288,13 @@ def parse_markdown_file(file_path: str) -> BlogPost:
         raw_tags = [t.strip() for t in raw_tags.split(",")]
     tags = [t for t in raw_tags if t]
 
-    # Featured image
-    featured_image_url = front_matter.get("image") or front_matter.get(
-        "featured_image"
-    )
+    # Featured image — may be a string or a Jekyll-style dict with a
+    # "feature" key (e.g.  image: {feature: photo.jpg, credit: ...})
+    raw_image = front_matter.get("image") or front_matter.get("featured_image")
+    if isinstance(raw_image, dict):
+        featured_image_url = raw_image.get("feature") or raw_image.get("url")
+    else:
+        featured_image_url = raw_image
 
     # DOI - check front matter first, then content
     doi_value = front_matter.get("doi") or _extract_doi(content_html, title)

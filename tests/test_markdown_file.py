@@ -79,12 +79,49 @@ class TestParseMarkdownFile:
         with pytest.raises(ValueError, match="title"):
             parse_markdown_file(str(md_file))
 
-    def test_missing_url_raises(self, tmp_path):
+    def test_missing_url_inferred_from_jekyll_filename(self, tmp_path):
+        """URL is inferred from Jekyll-style filename YYYY-MM-DD-slug.md."""
+        md_file = tmp_path / "2026-03-21-my-cool-post.markdown"
+        md_file.write_text(
+            "---\ntitle: Cool Post\ndate: 2026-03-21\n---\nHello\n"
+        )
+
+        post = parse_markdown_file(str(md_file))
+        assert post.url == "https://eve.gd/2026/03/21/my-cool-post/"
+        assert post.title == "Cool Post"
+
+    def test_missing_url_inferred_custom_site_url(self, tmp_path):
+        """URL inference uses a custom site_url when provided."""
+        md_file = tmp_path / "2026-01-15-other-post.md"
+        md_file.write_text("---\ntitle: Other\ndate: 2026-01-15\n---\nHi\n")
+
+        post = parse_markdown_file(
+            str(md_file), site_url="https://blog.example.com"
+        )
+        assert post.url == "https://blog.example.com/2026/01/15/other-post/"
+
+    def test_missing_url_non_jekyll_filename_raises(self, tmp_path):
         md_file = tmp_path / "bad.md"
         md_file.write_text("---\ntitle: No URL\n---\nHello\n")
 
         with pytest.raises(ValueError, match="url"):
             parse_markdown_file(str(md_file))
+
+    def test_nested_image_dict(self, tmp_path):
+        """Handle Jekyll-style image front matter with nested feature key."""
+        md_file = tmp_path / "2026-03-21-img-post.markdown"
+        md_file.write_text(
+            "---\n"
+            "title: Image Post\n"
+            "url: https://eve.gd/2026/03/21/img-post/\n"
+            "image:\n"
+            "  feature: yubico.png\n"
+            "  credit: Yubico\n"
+            "---\n"
+            "Content\n"
+        )
+        post = parse_markdown_file(str(md_file))
+        assert post.featured_image_url == "yubico.png"
 
     def test_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
