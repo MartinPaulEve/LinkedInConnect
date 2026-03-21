@@ -43,11 +43,18 @@ class LinkedInClient:
                 "Set LINKEDIN_PERSON_URN environment variable. "
                 "Format: urn:li:person:XXXXXX"
             )
+        # v2 ugcPosts requires urn:li:member: not urn:li:person:
+        if self.person_urn.startswith("urn:li:person:"):
+            member_id = self.person_urn.split(":")[-1]
+            self.member_urn = f"urn:li:member:{member_id}"
+        else:
+            self.member_urn = self.person_urn
         self._session = requests.Session()
         self._session.headers.update(self._default_headers())
         log.info(
             "linkedin_client_initialized",
             person_urn=self.person_urn,
+            member_urn=self.member_urn,
         )
 
     def _default_headers(self) -> dict:
@@ -132,7 +139,7 @@ class LinkedInClient:
             json={
                 "registerUploadRequest": {
                     "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                    "owner": self.person_urn,
+                    "owner": self.member_urn,
                     "serviceRelationships": [
                         {
                             "relationshipType": "OWNER",
@@ -226,7 +233,7 @@ class LinkedInClient:
             ]
 
         body = {
-            "author": self.person_urn,
+            "author": self.member_urn,
             "lifecycleState": "PUBLISHED",
             "specificContent": {
                 "com.linkedin.ugc.ShareContent": share_content
