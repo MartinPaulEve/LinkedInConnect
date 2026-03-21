@@ -123,12 +123,14 @@ def make_mock_response(
     """Helper to create a mock requests.Response."""
     resp = MagicMock()
     resp.status_code = status_code
+    resp.ok = status_code < 400
     resp.headers = headers or {}
     resp.json.return_value = json_data or {}
     resp.content = content
     resp.text = (
         content.decode() if isinstance(content, bytes) else str(content)
     )
+    resp.url = "https://api.linkedin.com/rest/mock"
     resp.raise_for_status.return_value = None
     if status_code >= 400:
         from requests.exceptions import HTTPError
