@@ -1,3 +1,12 @@
+## v0.5.2 (2026-03-21)
+
+### Fix
+
+- **ci**: skip GitHub release creation if tag already exists
+- **linkedin**: auto-resolve person URN from /v2/userinfo and use REST API
+- **linkedin**: use urn:li:member format for v2 ugcPosts API
+- **linkedin**: switch from REST API to v2 API for Share on LinkedIn product
+
 ## v0.5.1 (2026-03-21)
 
 ### Fix

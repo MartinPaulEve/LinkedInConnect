@@ -1,6 +1,6 @@
 [project]
 name = "linkedin-blog-sync"
-version = "0.5.1"
+version = "0.5.2"
 description = "Sync blog posts from eve.gd to LinkedIn"
 readme = "SETUP.md"
 requires-python = ">=3.10"
@@ -47,7 +47,7 @@ pythonpath = ["."]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.5.1"
+version = "0.5.2"
 version_files = [
     "pyproject.toml:^version",
 ]
