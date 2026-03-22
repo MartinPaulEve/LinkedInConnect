@@ -1,3 +1,12 @@
+## v0.7.0 (2026-03-22)
+
+### Feat
+
+- **single**: add video upload support with ffmpeg transcoding
+- **single**: add alt text support for image uploads
+- **single**: support local image uploads in ad-hoc posts
+- add automatic threading for long messages on BlueSky and Mastodon
+
 ## v0.6.0 (2026-03-22)
 
 ### Feat
