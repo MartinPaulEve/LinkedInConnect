@@ -38,7 +38,7 @@ def sample_blog_post():
         summary="This is a blog post about institutional stupidity...",
         featured_image_url="https://eve.gd/images/featured.jpg",
         doi="10.1234/test.5678",
-        author="Martin Paul Eve",
+        author="Test Author",
         tags=["academia", "open-access", "publishing"],
     )
 

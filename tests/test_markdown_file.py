@@ -20,7 +20,7 @@ tags:
   - testing
 image: https://eve.gd/images/test.jpg
 doi: 10.1234/test.5678
-author: Martin Paul Eve
+author: Test Author
 ---
 
 # Introduction
@@ -56,7 +56,7 @@ class TestParseMarkdownFile:
         assert post.tags == ["python", "testing"]
         assert post.featured_image_url == "https://eve.gd/images/test.jpg"
         assert post.doi == "10.1234/test.5678"
-        assert post.author == "Martin Paul Eve"
+        assert post.author == "Test Author"
         assert "<strong>test post</strong>" in post.content_html
         assert post.id == post.url
 

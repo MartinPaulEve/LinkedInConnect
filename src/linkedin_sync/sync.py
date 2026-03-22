@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync blog posts from eve.gd to LinkedIn, Bluesky, and Mastodon."""
+"""Sync blog posts to LinkedIn, Bluesky, and Mastodon."""
 
 import logging
 import os
@@ -10,7 +10,7 @@ import click
 from dotenv import load_dotenv
 
 from linkedin_sync.feed_parser import (
-    FEED_URL,
+    get_feed_url,
     get_post_by_url,
     get_todays_posts,
     parse_markdown_file,
@@ -312,9 +312,8 @@ def _make_clients(dry_run: bool, only: set[str] | None = None) -> tuple:
 @click.group(invoke_without_command=True)
 @click.option(
     "--feed-url",
-    default=FEED_URL,
-    show_default=True,
-    help="Atom feed URL.",
+    default=None,
+    help="Atom feed URL (default: $BLOG_FEED_URL or eve.gd feed).",
 )
 @click.option(
     "--state-file",
@@ -377,6 +376,10 @@ def cli(
         verbosity=logging.DEBUG if verbose else logging.INFO,
     )
     load_dotenv()
+
+    # Resolve feed URL after dotenv so BLOG_FEED_URL from .env is available
+    if feed_url is None:
+        feed_url = get_feed_url()
 
     # Parse --only into a set of platform names
     only_platforms = None

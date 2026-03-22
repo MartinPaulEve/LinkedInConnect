@@ -1,5 +1,6 @@
-"""Parse the eve.gd Atom feed and extract blog post data."""
+"""Parse an Atom feed and extract blog post data."""
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -14,8 +15,19 @@ from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
-FEED_URL = "https://eve.gd/feed/feed.atom"
-DEFAULT_SITE_URL = "https://eve.gd"
+_DEFAULT_FEED_URL = "https://eve.gd/feed/feed.atom"
+_DEFAULT_SITE_URL = "https://eve.gd"
+
+
+def get_feed_url() -> str:
+    """Return the configured feed URL from env or the built-in default."""
+    return os.environ.get("BLOG_FEED_URL", _DEFAULT_FEED_URL)
+
+
+def get_site_url() -> str:
+    """Return the configured site URL from env or the built-in default."""
+    return os.environ.get("BLOG_SITE_URL", _DEFAULT_SITE_URL)
+
 
 # Jekyll filename pattern: YYYY-MM-DD-slug.ext
 _JEKYLL_FILENAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-(.+?)(?:\.\w+)+$")
@@ -42,8 +54,9 @@ class BlogPost:
         return self.published.date()
 
 
-def parse_feed(feed_url: str = FEED_URL) -> list[BlogPost]:
+def parse_feed(feed_url: str | None = None) -> list[BlogPost]:
     """Parse the Atom feed and return a list of BlogPost objects."""
+    feed_url = feed_url or get_feed_url()
     log.info("parsing_feed", feed_url=feed_url)
     feed = feedparser.parse(feed_url)
     posts = []
@@ -202,7 +215,7 @@ def _html_to_text_summary(html: str, max_length: int = 300) -> str:
     return text
 
 
-def get_todays_posts(feed_url: str = FEED_URL) -> list[BlogPost]:
+def get_todays_posts(feed_url: str | None = None) -> list[BlogPost]:
     """Get only posts published today."""
     today = date.today()
     posts = [p for p in parse_feed(feed_url) if p.published_date == today]
@@ -214,7 +227,7 @@ def get_todays_posts(feed_url: str = FEED_URL) -> list[BlogPost]:
     return posts
 
 
-def get_post_by_url(url: str, feed_url: str = FEED_URL) -> BlogPost | None:
+def get_post_by_url(url: str, feed_url: str | None = None) -> BlogPost | None:
     """Find a specific post by its URL."""
     log.info("searching_post_by_url", target_url=url)
     for post in parse_feed(feed_url):
@@ -235,7 +248,7 @@ def _url_from_jekyll_filename(filename: str, site_url: str) -> str | None:
 
 
 def parse_markdown_file(
-    file_path: str, site_url: str = DEFAULT_SITE_URL
+    file_path: str, site_url: str | None = None
 ) -> BlogPost:
     """Parse a local markdown file with YAML front matter into a BlogPost.
 
@@ -245,6 +258,7 @@ def parse_markdown_file(
     If *url* / *permalink* is absent the URL is inferred from a Jekyll-style
     filename (``YYYY-MM-DD-slug.ext``) combined with *site_url*.
     """
+    site_url = site_url or get_site_url()
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Markdown file not found: {file_path}")
