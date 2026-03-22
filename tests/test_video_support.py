@@ -214,9 +214,7 @@ class TestSingleCommandWithVideo:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Watch this {vid}"]
-        )
+        result = runner.invoke(cli, ["single", f"Watch this {vid}"])
         assert result.exit_code == 0
 
         li.upload_video.assert_called_once_with(video_path=str(vid))
@@ -241,9 +239,7 @@ class TestSingleCommandWithVideo:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Watch {vid}"]
-        )
+        result = runner.invoke(cli, ["single", f"Watch {vid}"])
         assert result.exit_code == 0
 
         bs_kwargs = bs.create_post.call_args.kwargs
@@ -267,9 +263,7 @@ class TestSingleCommandWithVideo:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Watch {vid}"]
-        )
+        result = runner.invoke(cli, ["single", f"Watch {vid}"])
         assert result.exit_code == 0
 
         md_kwargs = md.create_post.call_args.kwargs
@@ -327,9 +321,7 @@ class TestSingleCommandWithVideo:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Watch {vid}"]
-        )
+        result = runner.invoke(cli, ["single", f"Watch {vid}"])
         assert result.exit_code == 0
         mock_transcode.assert_called_once_with(str(vid))
 
@@ -377,9 +369,7 @@ class TestSingleCommandWithVideo:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Watch {vid}"]
-        )
+        result = runner.invoke(cli, ["single", f"Watch {vid}"])
         assert result.exit_code == 0
         li.create_post.assert_called_once()
 
@@ -394,10 +384,7 @@ class TestBlueskyVideoUpload:
     def _make_blob_ref():
         from atproto_client.models.blob_ref import BlobRef
 
-        link = (
-            "bafkreibme22gw2h7y2h7tg2fhqotaq"
-            "jucnbc24deqo72b6mkl2egezxhvy"
-        )
+        link = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy"
         return BlobRef(
             mime_type="video/mp4",
             size=1000,
@@ -425,9 +412,7 @@ class TestBlueskyVideoUpload:
         from linkedin_sync.bluesky_client import BlueskyClient
 
         client = BlueskyClient()
-        url = client.create_post(
-            text="Watch this", video_path=str(vid)
-        )
+        url = client.create_post(text="Watch this", video_path=str(vid))
 
         assert "bsky.app" in url
         mock_client.upload_blob.assert_called_once()
@@ -437,9 +422,7 @@ class TestBlueskyVideoUpload:
         assert embed.video == blob_ref
 
     @patch("linkedin_sync.bluesky_client.Client")
-    def test_video_alt_text_set(
-        self, mock_client_cls, monkeypatch, tmp_path
-    ):
+    def test_video_alt_text_set(self, mock_client_cls, monkeypatch, tmp_path):
         monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
         monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
 
@@ -546,9 +529,7 @@ class TestMastodonVideoUpload:
     def test_create_post_with_video(
         self, mock_mastodon_cls, monkeypatch, tmp_path
     ):
-        monkeypatch.setenv(
-            "MASTODON_INSTANCE_URL", "https://mastodon.social"
-        )
+        monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
         mock_api = MagicMock()
@@ -565,9 +546,7 @@ class TestMastodonVideoUpload:
         from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
-        url = client.create_post(
-            text="Watch this", video_path=str(vid)
-        )
+        url = client.create_post(text="Watch this", video_path=str(vid))
 
         assert url == "https://mastodon.social/@test/123"
         mock_api.media_post.assert_called_once_with(str(vid))
@@ -576,9 +555,7 @@ class TestMastodonVideoUpload:
     def test_video_with_alt_text(
         self, mock_mastodon_cls, monkeypatch, tmp_path
     ):
-        monkeypatch.setenv(
-            "MASTODON_INSTANCE_URL", "https://mastodon.social"
-        )
+        monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
         mock_api = MagicMock()
@@ -609,9 +586,7 @@ class TestMastodonVideoUpload:
     def test_thread_with_video_on_chunk(
         self, mock_mastodon_cls, monkeypatch, tmp_path
     ):
-        monkeypatch.setenv(
-            "MASTODON_INSTANCE_URL", "https://mastodon.social"
-        )
+        monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
         mock_api = MagicMock()
@@ -650,12 +625,8 @@ class TestLinkedInVideoUpload:
     """Tests for LinkedIn video upload."""
 
     @patch("linkedin_sync.linkedin_client.requests.put")
-    @patch(
-        "linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn"
-    )
-    def test_upload_video(
-        self, mock_resolve, mock_put, monkeypatch, tmp_path
-    ):
+    @patch("linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn")
+    def test_upload_video(self, mock_resolve, mock_put, monkeypatch, tmp_path):
         monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "test-token")
         mock_resolve.return_value = "urn:li:person:abc"
 
@@ -695,12 +666,8 @@ class TestLinkedInVideoUpload:
         init_call = client._session.post.call_args_list[0]
         assert "videos" in init_call[0][0]
 
-    @patch(
-        "linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn"
-    )
-    def test_upload_video_nonexistent_raises(
-        self, mock_resolve, monkeypatch
-    ):
+    @patch("linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn")
+    def test_upload_video_nonexistent_raises(self, mock_resolve, monkeypatch):
         monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "test-token")
         mock_resolve.return_value = "urn:li:person:abc"
 
@@ -711,12 +678,8 @@ class TestLinkedInVideoUpload:
         with pytest.raises(FileNotFoundError):
             client.upload_video(video_path="/nonexistent/clip.mp4")
 
-    @patch(
-        "linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn"
-    )
-    def test_create_post_with_video_urn(
-        self, mock_resolve, monkeypatch
-    ):
+    @patch("linkedin_sync.linkedin_client.LinkedInClient._resolve_person_urn")
+    def test_create_post_with_video_urn(self, mock_resolve, monkeypatch):
         monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "test-token")
         mock_resolve.return_value = "urn:li:person:abc"
 

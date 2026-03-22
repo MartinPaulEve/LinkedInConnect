@@ -14,9 +14,7 @@ from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
-_IMAGE_EXTENSIONS = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-)
+_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 _VIDEO_EXTENSIONS = frozenset(
     {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 )
@@ -90,9 +88,7 @@ def transcode_video(path: str) -> str:
             capture_output=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        raise RuntimeError(
-            f"Failed to transcode {src} to MP4: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to transcode {src} to MP4: {e}") from e
 
     out_size = out.stat().st_size if out.exists() else 0
     log.info(

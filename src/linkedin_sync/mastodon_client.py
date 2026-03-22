@@ -81,15 +81,11 @@ class MastodonClient:
         }
 
         if video_path:
-            media_id = self._upload_media(
-                video_path, description=video_alt
-            )
+            media_id = self._upload_media(video_path, description=video_alt)
             if media_id:
                 kwargs["media_ids"] = [media_id]
         elif image_path:
-            media_id = self._upload_media(
-                image_path, description=image_alt
-            )
+            media_id = self._upload_media(image_path, description=image_alt)
             if media_id:
                 kwargs["media_ids"] = [media_id]
 
@@ -129,14 +125,10 @@ class MastodonClient:
         media_id = None
         media_chunk_idx = 0
         if video_path:
-            media_id = self._upload_media(
-                video_path, description=video_alt
-            )
+            media_id = self._upload_media(video_path, description=video_alt)
             media_chunk_idx = video_chunk_index
         elif image_path:
-            media_id = self._upload_media(
-                image_path, description=image_alt
-            )
+            media_id = self._upload_media(image_path, description=image_alt)
             media_chunk_idx = image_chunk_index
 
         first_status = None

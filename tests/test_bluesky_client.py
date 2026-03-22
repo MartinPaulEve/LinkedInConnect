@@ -312,9 +312,7 @@ class TestBlueskyCreateThread:
         from linkedin_sync.bluesky_client import BlueskyClient
 
         client = BlueskyClient()
-        client.create_thread(
-            ["Part 1 🧵1/3", "Part 2 🧵2/3", "Part 3 🧵3/3"]
-        )
+        client.create_thread(["Part 1 🧵1/3", "Part 2 🧵2/3", "Part 3 🧵3/3"])
 
         assert mock_client.send_post.call_count == 3
         # Third call's reply_to should reference root and parent

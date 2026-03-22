@@ -118,9 +118,7 @@ class TestExtractLocalImage:
         clean, _path, _alt = _extract_local_image(msg)
         assert clean == "Look at this"
 
-    def test_returns_char_position_for_chunk_mapping(
-        self, tmp_path
-    ):
+    def test_returns_char_position_for_chunk_mapping(self, tmp_path):
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake")
         # Image appears later in the message
@@ -227,9 +225,7 @@ class TestSingleCommandWithImage:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Check this out {img}"]
-        )
+        result = runner.invoke(cli, ["single", f"Check this out {img}"])
         assert result.exit_code == 0
 
         # LinkedIn should upload image and create post with image_urn
@@ -252,9 +248,7 @@ class TestSingleCommandWithImage:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Nice picture {img}"]
-        )
+        result = runner.invoke(cli, ["single", f"Nice picture {img}"])
         assert result.exit_code == 0
 
         bs_kwargs = bs.create_post.call_args.kwargs
@@ -274,9 +268,7 @@ class TestSingleCommandWithImage:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"My photo {img}"]
-        )
+        result = runner.invoke(cli, ["single", f"My photo {img}"])
         assert result.exit_code == 0
 
         md_kwargs = md.create_post.call_args.kwargs
@@ -361,9 +353,7 @@ class TestSingleCommandWithImage:
         img.write_bytes(b"fake-png-data")
         mock_mc.return_value = (MagicMock(), MagicMock(), MagicMock())
 
-        result = runner.invoke(
-            cli, ["--dry-run", "single", f"Test {img}"]
-        )
+        result = runner.invoke(cli, ["--dry-run", "single", f"Test {img}"])
         assert result.exit_code == 0
 
         li, _bs, _md = mock_mc.return_value
@@ -396,9 +386,7 @@ class TestSingleCommandWithImage:
         assert li_kwargs["image_urn"] == "urn:li:image:123"
 
     @patch("linkedin_sync.sync._make_clients")
-    def test_alt_text_passed_to_all_platforms(
-        self, mock_mc, runner, tmp_path
-    ):
+    def test_alt_text_passed_to_all_platforms(self, mock_mc, runner, tmp_path):
         img = tmp_path / "bear.jpeg"
         img.write_bytes(b"fake-jpeg-data")
 
@@ -431,9 +419,7 @@ class TestSingleCommandWithImage:
         assert md_kwargs["image_alt"] == "An image of a bear"
 
     @patch("linkedin_sync.sync._make_clients")
-    def test_no_alt_text_not_passed(
-        self, mock_mc, runner, tmp_path
-    ):
+    def test_no_alt_text_not_passed(self, mock_mc, runner, tmp_path):
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake-png-data")
 
@@ -446,9 +432,7 @@ class TestSingleCommandWithImage:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"No alt {img}"]
-        )
+        result = runner.invoke(cli, ["single", f"No alt {img}"])
         assert result.exit_code == 0
 
         li_kwargs = li.create_post.call_args.kwargs
@@ -459,9 +443,7 @@ class TestSingleCommandWithImage:
         assert md_kwargs.get("image_alt") is None
 
     @patch("linkedin_sync.sync._make_clients")
-    def test_alt_text_in_thread(
-        self, mock_mc, runner, tmp_path
-    ):
+    def test_alt_text_in_thread(self, mock_mc, runner, tmp_path):
         """Alt text should be passed through to threaded posts."""
         img = tmp_path / "bear.jpeg"
         img.write_bytes(b"fake")
@@ -498,9 +480,7 @@ class TestSingleCommandWithImage:
         md.create_post.return_value = "https://mastodon.social/@u/1"
         mock_mc.return_value = (li, bs, md)
 
-        result = runner.invoke(
-            cli, ["single", f"Test {img}"]
-        )
+        result = runner.invoke(cli, ["single", f"Test {img}"])
         assert result.exit_code == 0
         # Should still attempt to post (without image)
         li.create_post.assert_called_once()
@@ -513,10 +493,7 @@ class TestBlueskyImageUpload:
     def _make_blob_ref():
         from atproto_client.models.blob_ref import BlobRef
 
-        link = (
-            "bafkreibme22gw2h7y2h7tg2fhqotaq"
-            "jucnbc24deqo72b6mkl2egezxhvy"
-        )
+        link = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy"
         return BlobRef(
             mime_type="image/png",
             size=100,
@@ -633,9 +610,7 @@ class TestBlueskyImageUpload:
             uri="at://did:plc:abc/app.bsky.feed.post/xyz"
         )
         blob_ref = self._make_blob_ref()
-        mock_client.upload_blob.return_value = MagicMock(
-            blob=blob_ref
-        )
+        mock_client.upload_blob.return_value = MagicMock(blob=blob_ref)
         mock_client_cls.return_value = mock_client
 
         img = tmp_path / "test.png"
@@ -666,9 +641,7 @@ class TestBlueskyImageUpload:
             uri="at://did:plc:abc/app.bsky.feed.post/xyz"
         )
         blob_ref = self._make_blob_ref()
-        mock_client.upload_blob.return_value = MagicMock(
-            blob=blob_ref
-        )
+        mock_client.upload_blob.return_value = MagicMock(blob=blob_ref)
         mock_client_cls.return_value = mock_client
 
         img = tmp_path / "test.png"
@@ -677,9 +650,7 @@ class TestBlueskyImageUpload:
         from linkedin_sync.bluesky_client import BlueskyClient
 
         client = BlueskyClient()
-        client.create_post(
-            text="With image", image_path=str(img)
-        )
+        client.create_post(text="With image", image_path=str(img))
 
         call_kwargs = mock_client.send_post.call_args[1]
         embed = call_kwargs["embed"]
@@ -759,9 +730,7 @@ class TestMastodonImageUpload:
     def test_alt_text_passed_to_media_post(
         self, mock_mastodon_cls, monkeypatch, tmp_path
     ):
-        monkeypatch.setenv(
-            "MASTODON_INSTANCE_URL", "https://mastodon.social"
-        )
+        monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
         mock_api = MagicMock()
@@ -792,9 +761,7 @@ class TestMastodonImageUpload:
     def test_no_alt_text_no_description(
         self, mock_mastodon_cls, monkeypatch, tmp_path
     ):
-        monkeypatch.setenv(
-            "MASTODON_INSTANCE_URL", "https://mastodon.social"
-        )
+        monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 
         mock_api = MagicMock()
@@ -811,16 +778,12 @@ class TestMastodonImageUpload:
         from linkedin_sync.mastodon_client import MastodonClient
 
         client = MastodonClient()
-        client.create_post(
-            text="With image", image_path=str(img)
-        )
+        client.create_post(text="With image", image_path=str(img))
 
         mock_api.media_post.assert_called_once_with(str(img))
 
     @patch("linkedin_sync.mastodon_client.Mastodon")
-    def test_no_image_no_media_upload(
-        self, mock_mastodon_cls, monkeypatch
-    ):
+    def test_no_image_no_media_upload(self, mock_mastodon_cls, monkeypatch):
         monkeypatch.setenv("MASTODON_INSTANCE_URL", "https://mastodon.social")
         monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
 

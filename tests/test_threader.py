@@ -149,9 +149,7 @@ class TestSplitMessageEdgeCases:
         text = "a" * 400
         result = split_message(text, 300)
         # Should handle gracefully - the word must appear somewhere
-        all_text = "".join(
-            chunk.rsplit(" 🧵", 1)[0] for chunk in result
-        )
+        all_text = "".join(chunk.rsplit(" 🧵", 1)[0] for chunk in result)
         assert "a" * 400 in all_text
 
     def test_indicator_space_reserved_correctly(self):

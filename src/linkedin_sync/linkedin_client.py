@@ -251,9 +251,7 @@ class LinkedInClient:
 
         init_data = init_resp.json()
         video_urn = init_data["value"]["video"]
-        upload_instructions = init_data["value"][
-            "uploadInstructions"
-        ]
+        upload_instructions = init_data["value"]["uploadInstructions"]
         log.debug(
             "video_upload_initialized",
             video_urn=video_urn,

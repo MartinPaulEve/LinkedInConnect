@@ -752,9 +752,7 @@ def single(ctx, message):
     media_match = _MEDIA_PATH_RE.search(message)
     media_char_pos = media_match.start() if media_match else 0
     original_len = len(message)
-    clean_message, media_path, media_alt = _extract_local_media(
-        message
-    )
+    clean_message, media_path, media_alt = _extract_local_media(message)
 
     # Classify the media type
     image_path: str | None = None
@@ -857,9 +855,7 @@ def single(ctx, message):
             media_urn = None
             if video_path:
                 try:
-                    media_urn = li_client.upload_video(
-                        video_path=video_path
-                    )
+                    media_urn = li_client.upload_video(video_path=video_path)
                     li_kwargs["video_urn"] = media_urn
                 except Exception as e:
                     log.warning(
@@ -868,16 +864,12 @@ def single(ctx, message):
                     )
             elif image_path:
                 try:
-                    media_urn = li_client.upload_image(
-                        image_path=image_path
-                    )
+                    media_urn = li_client.upload_image(image_path=image_path)
                     li_kwargs["image_urn"] = media_urn
                     if media_alt:
                         li_kwargs["image_alt_text"] = media_alt
                 except Exception as e:
-                    log.warning(
-                        "linkedin_image_upload_failed", error=str(e)
-                    )
+                    log.warning("linkedin_image_upload_failed", error=str(e))
             if not media_urn and link_url:
                 li_kwargs["article_url"] = link_url
             li_client.create_post(**li_kwargs)
