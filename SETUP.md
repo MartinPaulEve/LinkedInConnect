@@ -1,6 +1,6 @@
 # LinkedIn Blog Post Sync - Setup Guide
 
-This tool syncs blog posts from [eve.gd](https://eve.gd/posts/) to your LinkedIn profile using the LinkedIn Community Management API.
+This tool syncs blog posts from an Atom feed to LinkedIn, Bluesky, and Mastodon.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ This reads `pyproject.toml` and installs all dependencies into a virtual environ
 2. Click **Create App** and fill in:
    - **App name**: e.g., "Blog Post Sync"
    - **LinkedIn Page**: You need to associate it with a LinkedIn Company Page. If you don't have one, create a simple one first at [linkedin.com/company/setup/new](https://www.linkedin.com/company/setup/new/).
-   - **Privacy policy URL**: Can be your blog URL (https://eve.gd)
+   - **Privacy policy URL**: Can be your blog URL
    - **App logo**: Any square image (required)
 
 3. After creating the app, go to the **Products** tab.
@@ -267,7 +267,7 @@ uv run pytest --cov       # with coverage report
 
 ## How It Works
 
-1. **Feed parsing**: Fetches and parses the Atom feed at `https://eve.gd/feed/feed.atom`
+1. **Feed parsing**: Fetches and parses the Atom feed configured via `BLOG_FEED_URL`
 2. **Content formatting**: Converts HTML blog content to LinkedIn-friendly plain text:
    - Preserves paragraph structure with line breaks
    - Converts lists to bullet/numbered format

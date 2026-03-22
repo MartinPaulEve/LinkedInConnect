@@ -1,8 +1,8 @@
 [project]
 name = "linkedin-blog-sync"
 version = "0.5.4"
-description = "Sync blog posts from eve.gd to LinkedIn"
-readme = "SETUP.md"
+description = "Sync blog posts from an Atom feed to LinkedIn, Bluesky, and Mastodon"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.0",

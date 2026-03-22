@@ -14,13 +14,13 @@
 
 # linkedin-blog-sync
 
-A command-line tool that cross-posts blog entries from an Atom feed (or a local markdown file) to LinkedIn, Bluesky, and Mastodon. I wrote this because I got tired of manually copying and pasting summaries of my blog posts into three different platforms every time I published something on [eve.gd](https://eve.gd).
+A command-line tool that cross-posts blog entries from an Atom feed (or a local markdown file) to LinkedIn, Bluesky, and Mastodon.
 
-The tool parses your feed, formats the content appropriately for each platform's constraints and conventions, optionally generates a short summary via an LLM, uploads featured images where supported, and tracks what has already been posted so you don't end up with duplicates.
+It parses your feed, formats the content appropriately for each platform's constraints and conventions, optionally generates a short summary via an LLM, uploads featured images where supported, and tracks what has already been posted so you don't end up with duplicates.
 
 ## What it does
 
-Given an Atom feed URL or a local `.md` file with YAML front matter, the tool will:
+Given an Atom feed URL (configured via `BLOG_FEED_URL`) or a local `.md` file with YAML front matter, the tool will:
 
 - Parse the post content and metadata (title, URL, tags, featured image, DOI if present)
 - Format the text for each platform, respecting character limits (LinkedIn ~3000, Mastodon 500, Bluesky 300)
@@ -56,6 +56,40 @@ cp .env.example .env
 # fill in credentials
 uv run linkedin-sync --dry-run
 ```
+
+## Configuration
+
+The tool is configured via environment variables in a `.env` file. The key blog-specific settings are:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BLOG_FEED_URL` | Atom feed URL for your blog | `https://eve.gd/feed/feed.atom` |
+| `BLOG_SITE_URL` | Base URL of your blog (used for resolving relative image paths and deriving URLs from Jekyll-style filenames) | `https://eve.gd` |
+| `BLOG_AUTHOR_CONTEXT` | Optional context about the author injected into LLM prompts for more personalised summaries (e.g. `"a professor who writes about open access"`) | _(empty)_ |
+
+Platform credentials (`LINKEDIN_*`, `BLUESKY_*`, `MASTODON_*`) and LLM settings (`LLM_PROVIDER`, `LLM_MODEL`) are documented in `.env.example`.
+
+## Markdown file format
+
+When using `linkedin-sync file <path>`, the tool expects a markdown file with YAML front matter delimited by `---`:
+
+```yaml
+---
+title: "My Blog Post"          # required
+url: "https://example.com/..."  # required (or use a Jekyll-style filename)
+date: 2026-03-21                # optional, defaults to now
+tags:                           # optional, string or list
+  - python
+  - testing
+image: featured.jpg             # optional, string or dict with feature/url key
+doi: "10.1234/example"          # optional
+author: "Jane Smith"            # optional
+---
+
+Your markdown content here...
+```
+
+If `url` (or `permalink`) is omitted, the tool infers it from a Jekyll-style filename (`YYYY-MM-DD-slug.md`) combined with `BLOG_SITE_URL`. Relative image filenames (e.g. `image: photo.jpg`) are resolved to `BLOG_SITE_URL/images/photo.jpg`.
 
 ## Tests
 

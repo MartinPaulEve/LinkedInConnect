@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Sync blog posts from eve.gd to LinkedIn, Bluesky, and Mastodon."""
+"""Sync blog posts to LinkedIn, Bluesky, and Mastodon."""
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import click
 from dotenv import load_dotenv
 
 from linkedin_sync.feed_parser import (
-    FEED_URL,
+    get_feed_url,
     get_post_by_url,
     get_todays_posts,
     parse_markdown_file,
@@ -21,6 +22,9 @@ from linkedin_sync.summarizer import summarize_post, summarize_post_short
 from linkedin_sync.sync_tracker import SyncTracker
 
 log = get_logger(__name__)
+
+# Regex to find URLs in text (used by the single command)
+_URL_RE = re.compile(r"https?://[^\s)<>]+")
 
 
 @dataclass
@@ -312,9 +316,8 @@ def _make_clients(dry_run: bool, only: set[str] | None = None) -> tuple:
 @click.group(invoke_without_command=True)
 @click.option(
     "--feed-url",
-    default=FEED_URL,
-    show_default=True,
-    help="Atom feed URL.",
+    default=None,
+    help="Atom feed URL (default: $BLOG_FEED_URL or eve.gd feed).",
 )
 @click.option(
     "--state-file",
@@ -377,6 +380,10 @@ def cli(
         verbosity=logging.DEBUG if verbose else logging.INFO,
     )
     load_dotenv()
+
+    # Resolve feed URL after dotenv so BLOG_FEED_URL from .env is available
+    if feed_url is None:
+        feed_url = get_feed_url()
 
     # Parse --only into a set of platform names
     only_platforms = None
@@ -636,6 +643,80 @@ def image_check(ctx, path):
             continue
 
         resize_image(img_path)
+
+
+@cli.command()
+@click.argument("message")
+@click.pass_context
+def single(ctx, message):
+    """Post an ad-hoc message to all social networks.
+
+    The message is posted as-is. If it contains a URL, a link card
+    embed is created on platforms that support them (LinkedIn and
+    Bluesky). Mastodon generates its own link previews automatically.
+
+    Example:
+
+        linkedin-sync single "Had a great day https://example.com"
+    """
+    dry_run = ctx.obj["dry_run"]
+    only = ctx.obj.get("only")
+    li_client, bs_client, md_client = _make_clients(dry_run, only)
+
+    # Extract URLs from the message for link card embeds
+    url_matches = _URL_RE.findall(message)
+    link_url = url_matches[-1] if url_matches else None
+
+    if dry_run:
+        log.info(
+            "dry_run_single",
+            message=message,
+            link_url=link_url,
+            platforms=_platform_names(li_client, bs_client, md_client),
+        )
+        return
+
+    # --- LinkedIn ---
+    if li_client:
+        try:
+            li_kwargs: dict = {"text": message}
+            if link_url:
+                li_kwargs["article_url"] = link_url
+            li_client.create_post(**li_kwargs)
+            log.info("linkedin_single_posted")
+        except Exception as e:
+            log.error("linkedin_single_failed", error=str(e))
+
+    # --- Bluesky ---
+    if bs_client:
+        try:
+            bs_kwargs: dict = {"text": message}
+            if link_url:
+                bs_kwargs["link_url"] = link_url
+            bs_client.create_post(**bs_kwargs)
+            log.info("bluesky_single_posted")
+        except Exception as e:
+            log.error("bluesky_single_failed", error=str(e))
+
+    # --- Mastodon ---
+    if md_client:
+        try:
+            md_client.create_post(text=message)
+            log.info("mastodon_single_posted")
+        except Exception as e:
+            log.error("mastodon_single_failed", error=str(e))
+
+
+def _platform_names(li, bs, md) -> list[str]:
+    """Return a list of active platform names for logging."""
+    names = []
+    if li:
+        names.append("linkedin")
+    if bs:
+        names.append("bluesky")
+    if md:
+        names.append("mastodon")
+    return names
 
 
 if __name__ == "__main__":

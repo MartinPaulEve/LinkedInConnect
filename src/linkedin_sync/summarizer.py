@@ -9,14 +9,13 @@ from linkedin_sync.logging_config import get_logger
 
 log = get_logger(__name__)
 
-SYSTEM_PROMPT_LINKEDIN = """\
-You are ghostwriting a LinkedIn post for Martin Paul Eve, a professor and \
-academic who blogs about higher education, open access, publishing, and \
-technology. Your job is to write a short summary of a blog post that will \
-appear on his LinkedIn feed.
+_SYSTEM_PROMPT_LINKEDIN = """\
+You are ghostwriting a LinkedIn post for the author of a blog. Your job is \
+to write a short summary of a blog post that will appear on their LinkedIn \
+feed.
 
 Rules:
-- Write in first person as Martin. Use a casual, understated tone, as \
+- Write in first person as the author. Use a casual, understated tone, as \
 though you're mentioning something to a colleague in passing. Think "here's \
 a post about how I set up X" or "my thoughts on Y" rather than anything \
 that sounds like an announcement or promotion.
@@ -40,14 +39,15 @@ inflated words. Write plainly.
 - The voice should sound like a person, not a brand.\
 """
 
-SYSTEM_PROMPT_SHORT = """\
-You are ghostwriting a short social media post for Martin Paul Eve, a \
-professor and academic. Your job is to write a very brief summary of a blog \
-post, suitable for Bluesky or Mastodon.
+_SYSTEM_PROMPT_SHORT = """\
+You are ghostwriting a short social media post for the author of a blog. \
+Your job is to write a very brief summary of a blog post, suitable for \
+Bluesky or Mastodon.
 
 Rules:
-- Write in first person as Martin. Casual, understated tone, like mentioning \
-something to a friend. Think "wrote up how to do X" or "some thoughts on Y".
+- Write in first person as the author. Casual, understated tone, like \
+mentioning something to a friend. Think "wrote up how to do X" or \
+"some thoughts on Y".
 - You MUST keep the entire output under {max_chars} characters. This is a \
 hard limit. Count carefully.
 - Get straight to the point. One or two sentences.
@@ -59,6 +59,16 @@ hard limit. Count carefully.
 - Do NOT end with a question or call to action.
 - No hype or inflated language. Write plainly.\
 """
+
+
+def _build_system_prompt(base_prompt: str, **kwargs) -> str:
+    """Build a system prompt, appending author context if configured."""
+    prompt = base_prompt.format(**kwargs) if kwargs else base_prompt
+    author_context = os.environ.get("BLOG_AUTHOR_CONTEXT", "").strip()
+    if author_context:
+        prompt += f"\n\nAdditional context about the author: {author_context}"
+    return prompt
+
 
 USER_PROMPT_TEMPLATE = """\
 Blog post title: {title}
@@ -85,7 +95,8 @@ def summarize_post(
         title=title, content_text=content_text
     )
 
-    summary = _call_llm(SYSTEM_PROMPT_LINKEDIN, user_prompt)
+    system_prompt = _build_system_prompt(_SYSTEM_PROMPT_LINKEDIN)
+    summary = _call_llm(system_prompt, user_prompt)
 
     # Build the final post with footer
     parts = [summary.strip()]
@@ -127,7 +138,9 @@ def summarize_post_short(
     url_overhead = len(post_url) + 2
     summary_budget = max_chars - url_overhead
 
-    system_prompt = SYSTEM_PROMPT_SHORT.format(max_chars=summary_budget)
+    system_prompt = _build_system_prompt(
+        _SYSTEM_PROMPT_SHORT, max_chars=summary_budget
+    )
     user_prompt = USER_PROMPT_TEMPLATE.format(
         title=title, content_text=content_text
     )
