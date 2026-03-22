@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 
 import click
@@ -398,6 +399,10 @@ def _make_clients(dry_run: bool, only: set[str] | None = None) -> tuple:
 
 
 @click.group(invoke_without_command=True)
+@click.version_option(
+    version=version("linkedin-blog-sync"),
+    prog_name="linkedin-blog-sync",
+)
 @click.option(
     "--feed-url",
     default=None,
@@ -681,6 +686,13 @@ def verify(ctx):
 
     for platform, status in results.items():
         log.info("verify_result", platform=platform, status=status)
+
+
+@cli.command("version")
+def version_cmd():
+    """Show the current version of linkedin-blog-sync."""
+    ver = version("linkedin-blog-sync")
+    click.echo(f"linkedin-blog-sync {ver}")
 
 
 @cli.command("image-check")
