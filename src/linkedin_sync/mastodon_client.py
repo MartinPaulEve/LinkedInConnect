@@ -57,19 +57,22 @@ class MastodonClient:
         language: str = "en",
         image_path: str | None = None,
         image_alt: str | None = None,
+        video_path: str | None = None,
+        video_alt: str | None = None,
     ) -> str:
         """Create a Mastodon post. Returns the post URL.
 
         Links in the text are auto-embedded by Mastodon as preview
-        cards, so no explicit link attachment is needed. If image_path
-        is provided, the image is uploaded and attached. image_alt
-        sets the alt text description for the image.
+        cards, so no explicit link attachment is needed. If video_path
+        or image_path is provided, the media is uploaded and attached.
+        Video takes precedence over image.
         """
         log.info(
             "creating_mastodon_post",
             text_length=len(text),
             visibility=visibility,
             has_image=bool(image_path),
+            has_video=bool(video_path),
         )
 
         kwargs: dict = {
@@ -77,7 +80,13 @@ class MastodonClient:
             "language": language,
         }
 
-        if image_path:
+        if video_path:
+            media_id = self._upload_media(
+                video_path, description=video_alt
+            )
+            if media_id:
+                kwargs["media_ids"] = [media_id]
+        elif image_path:
             media_id = self._upload_media(
                 image_path, description=image_alt
             )
@@ -98,27 +107,37 @@ class MastodonClient:
         image_path: str | None = None,
         image_chunk_index: int = 0,
         image_alt: str | None = None,
+        video_path: str | None = None,
+        video_chunk_index: int = 0,
+        video_alt: str | None = None,
     ) -> str:
         """Post a thread of statuses. Returns the URL of the first post.
 
         Each subsequent status is posted as a reply to the previous one.
-        If image_path is provided, the image is attached to the chunk
-        at image_chunk_index. image_alt sets the alt text.
+        Media (video or image) is attached to the chunk at the
+        specified index. Video takes precedence over image.
         """
         log.info(
             "creating_mastodon_thread",
             chunk_count=len(chunks),
             visibility=visibility,
             has_image=bool(image_path),
-            image_chunk_index=image_chunk_index if image_path else None,
+            has_video=bool(video_path),
         )
 
-        # Upload media once if provided
+        # Upload media once if provided (video takes priority)
         media_id = None
-        if image_path:
+        media_chunk_idx = 0
+        if video_path:
+            media_id = self._upload_media(
+                video_path, description=video_alt
+            )
+            media_chunk_idx = video_chunk_index
+        elif image_path:
             media_id = self._upload_media(
                 image_path, description=image_alt
             )
+            media_chunk_idx = image_chunk_index
 
         first_status = None
         parent_id = None
@@ -130,7 +149,7 @@ class MastodonClient:
             }
             if parent_id is not None:
                 kwargs["in_reply_to_id"] = parent_id
-            if i == image_chunk_index and media_id:
+            if i == media_chunk_idx and media_id:
                 kwargs["media_ids"] = [media_id]
 
             status = self._client.status_post(chunk, **kwargs)

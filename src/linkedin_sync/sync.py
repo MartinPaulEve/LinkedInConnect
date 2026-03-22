@@ -21,37 +21,45 @@ from linkedin_sync.logging_config import configure_logging, get_logger
 from linkedin_sync.summarizer import summarize_post, summarize_post_short
 from linkedin_sync.sync_tracker import SyncTracker
 from linkedin_sync.threader import split_message
+from linkedin_sync.video import MediaType, classify_media, transcode_video
 
 log = get_logger(__name__)
 
 # Regex to find URLs in text (used by the single command)
 _URL_RE = re.compile(r"https?://[^\s)<>]+")
 
-# Regex to find local image file paths in text
-# Matches absolute paths, ~/paths, and ./paths ending with image extensions
-_IMAGE_PATH_RE = re.compile(
-    r"(?:~|\.\.?)?/[^\s]+\.(?:png|jpg|jpeg|gif|webp)", re.IGNORECASE
+# Regex to find local media file paths in text
+# Matches absolute paths, ~/paths, and ./paths ending with
+# image or video extensions
+_MEDIA_PATH_RE = re.compile(
+    r"(?:~|\.\.?)?/[^\s]+\."
+    r"(?:png|jpg|jpeg|gif|webp|mp4|mov|mkv|avi|webm|m4v)",
+    re.IGNORECASE,
 )
 
-# Regex to find alt text in square brackets immediately after an image
+# Keep the old name for backward compatibility (used by image tests)
+_IMAGE_PATH_RE = _MEDIA_PATH_RE
+
+# Regex to find alt text in square brackets immediately after a media
 # path (with optional whitespace between)
 _ALT_TEXT_RE = re.compile(r"\s*\[([^\]]*)\]")
 
 
-def _extract_local_image(
+def _extract_local_media(
     message: str,
 ) -> tuple[str, str | None, str | None]:
-    """Extract a local image path and optional alt text from message.
+    """Extract a local media path and optional alt text from message.
 
-    Alt text is specified in square brackets immediately after the
-    image path, e.g.: ``~/photo.png [A lovely sunset]``
+    Detects both image and video file paths. Alt text is specified
+    in square brackets immediately after the path, e.g.:
+    ``~/clip.mp4 [A cat dancing]``
 
-    Returns (clean_message, resolved_image_path, alt_text).
-    If no valid image is found, returns (message, None, None).
-    Both the image path and the alt text marker are stripped from
+    Returns (clean_message, resolved_path, alt_text).
+    If no valid media is found, returns (message, None, None).
+    Both the file path and the alt text marker are stripped from
     the clean message.
     """
-    match = _IMAGE_PATH_RE.search(message)
+    match = _MEDIA_PATH_RE.search(message)
     if not match:
         return message, None, None
 
@@ -66,7 +74,7 @@ def _extract_local_image(
     if not resolved.exists():
         return message, None, None
 
-    # Check for alt text in brackets right after the image path
+    # Check for alt text in brackets right after the media path
     alt_text = None
     remove_end = match.end()
     alt_match = _ALT_TEXT_RE.match(message, match.end())
@@ -81,6 +89,10 @@ def _extract_local_image(
     clean = re.sub(r"  +", " ", clean).strip()
 
     return clean, str(resolved), alt_text
+
+
+# Backward-compatible alias for existing image-only callers
+_extract_local_image = _extract_local_media
 
 
 def _image_chunk_index(
@@ -735,23 +747,38 @@ def single(ctx, message):
     only = ctx.obj.get("only")
     li_client, bs_client, md_client = _make_clients(dry_run, only)
 
-    # Extract local image path (if any) and clean it from the message
+    # Extract local media path (image or video) and clean it from msg
     # Record the character position before cleaning for chunk mapping
-    image_match = _IMAGE_PATH_RE.search(message)
-    image_char_pos = image_match.start() if image_match else 0
+    media_match = _MEDIA_PATH_RE.search(message)
+    media_char_pos = media_match.start() if media_match else 0
     original_len = len(message)
-    clean_message, image_path, image_alt = _extract_local_image(
+    clean_message, media_path, media_alt = _extract_local_media(
         message
     )
 
-    if image_path:
-        log.info(
-            "local_image_detected",
-            image_path=image_path,
-            alt_text=image_alt,
-        )
+    # Classify the media type
+    image_path: str | None = None
+    video_path: str | None = None
 
-    # Use the cleaned message (without image path) for posting
+    if media_path:
+        media_type = classify_media(media_path)
+        if media_type == MediaType.VIDEO:
+            log.info(
+                "local_video_detected",
+                video_path=media_path,
+                alt_text=media_alt,
+            )
+            # Transcode to MP4/H.264 if needed
+            video_path = transcode_video(media_path)
+        else:
+            image_path = media_path
+            log.info(
+                "local_image_detected",
+                image_path=media_path,
+                alt_text=media_alt,
+            )
+
+    # Use the cleaned message (without media path) for posting
     message = clean_message
 
     # Extract URLs from the message for link card embeds
@@ -765,12 +792,12 @@ def single(ctx, message):
     bs_chunks = split_message(message, BS_MAX)
     md_chunks = split_message(message, MD_MAX)
 
-    # Determine which chunk the image belongs to for each platform
-    bs_image_idx = _image_chunk_index(
-        image_char_pos, original_len, len(bs_chunks)
+    # Determine which chunk the media belongs to for each platform
+    bs_media_idx = _image_chunk_index(
+        media_char_pos, original_len, len(bs_chunks)
     )
-    md_image_idx = _image_chunk_index(
-        image_char_pos, original_len, len(md_chunks)
+    md_media_idx = _image_chunk_index(
+        media_char_pos, original_len, len(md_chunks)
     )
 
     if dry_run:
@@ -779,6 +806,7 @@ def single(ctx, message):
             message=message,
             link_url=link_url,
             image_path=image_path,
+            video_path=video_path,
             platforms=_platform_names(li_client, bs_client, md_client),
         )
         # LinkedIn: always a single post
@@ -788,13 +816,14 @@ def single(ctx, message):
             posts=1,
             text=message,
             has_image=bool(image_path),
+            has_video=bool(video_path),
         )
         # Bluesky threading breakdown
         log.info(
             "dry_run_bluesky_threading",
             total_posts=len(bs_chunks),
             threaded=len(bs_chunks) > 1,
-            image_chunk=bs_image_idx if image_path else None,
+            media_chunk=bs_media_idx if media_path else None,
         )
         for i, chunk in enumerate(bs_chunks):
             log.info(
@@ -809,7 +838,7 @@ def single(ctx, message):
             "dry_run_mastodon_threading",
             total_posts=len(md_chunks),
             threaded=len(md_chunks) > 1,
-            image_chunk=md_image_idx if image_path else None,
+            media_chunk=md_media_idx if media_path else None,
         )
         for i, chunk in enumerate(md_chunks):
             log.info(
@@ -825,20 +854,31 @@ def single(ctx, message):
     if li_client:
         try:
             li_kwargs: dict = {"text": message}
-            image_urn = None
-            if image_path:
+            media_urn = None
+            if video_path:
                 try:
-                    image_urn = li_client.upload_image(
+                    media_urn = li_client.upload_video(
+                        video_path=video_path
+                    )
+                    li_kwargs["video_urn"] = media_urn
+                except Exception as e:
+                    log.warning(
+                        "linkedin_video_upload_failed",
+                        error=str(e),
+                    )
+            elif image_path:
+                try:
+                    media_urn = li_client.upload_image(
                         image_path=image_path
                     )
-                    li_kwargs["image_urn"] = image_urn
-                    if image_alt:
-                        li_kwargs["image_alt_text"] = image_alt
+                    li_kwargs["image_urn"] = media_urn
+                    if media_alt:
+                        li_kwargs["image_alt_text"] = media_alt
                 except Exception as e:
                     log.warning(
                         "linkedin_image_upload_failed", error=str(e)
                     )
-            if not image_urn and link_url:
+            if not media_urn and link_url:
                 li_kwargs["article_url"] = link_url
             li_client.create_post(**li_kwargs)
             log.info("linkedin_single_posted")
@@ -852,11 +892,16 @@ def single(ctx, message):
                 bs_kwargs: dict = {}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
-                if image_path:
+                if video_path:
+                    bs_kwargs["video_path"] = video_path
+                    bs_kwargs["video_chunk_index"] = bs_media_idx
+                    if media_alt:
+                        bs_kwargs["video_alt"] = media_alt
+                elif image_path:
                     bs_kwargs["image_path"] = image_path
-                    bs_kwargs["image_chunk_index"] = bs_image_idx
-                    if image_alt:
-                        bs_kwargs["image_alt"] = image_alt
+                    bs_kwargs["image_chunk_index"] = bs_media_idx
+                    if media_alt:
+                        bs_kwargs["image_alt"] = media_alt
                 bs_client.create_thread(bs_chunks, **bs_kwargs)
                 log.info(
                     "bluesky_thread_posted",
@@ -866,10 +911,14 @@ def single(ctx, message):
                 bs_kwargs = {"text": message}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
-                if image_path:
+                if video_path:
+                    bs_kwargs["video_path"] = video_path
+                    if media_alt:
+                        bs_kwargs["video_alt"] = media_alt
+                elif image_path:
                     bs_kwargs["image_path"] = image_path
-                    if image_alt:
-                        bs_kwargs["image_alt"] = image_alt
+                    if media_alt:
+                        bs_kwargs["image_alt"] = media_alt
                 bs_client.create_post(**bs_kwargs)
                 log.info("bluesky_single_posted")
         except Exception as e:
@@ -880,11 +929,16 @@ def single(ctx, message):
         try:
             if len(md_chunks) > 1:
                 md_kwargs: dict = {}
-                if image_path:
+                if video_path:
+                    md_kwargs["video_path"] = video_path
+                    md_kwargs["video_chunk_index"] = md_media_idx
+                    if media_alt:
+                        md_kwargs["video_alt"] = media_alt
+                elif image_path:
                     md_kwargs["image_path"] = image_path
-                    md_kwargs["image_chunk_index"] = md_image_idx
-                    if image_alt:
-                        md_kwargs["image_alt"] = image_alt
+                    md_kwargs["image_chunk_index"] = md_media_idx
+                    if media_alt:
+                        md_kwargs["image_alt"] = media_alt
                 md_client.create_thread(md_chunks, **md_kwargs)
                 log.info(
                     "mastodon_thread_posted",
@@ -892,10 +946,14 @@ def single(ctx, message):
                 )
             else:
                 md_kwargs = {"text": message}
-                if image_path:
+                if video_path:
+                    md_kwargs["video_path"] = video_path
+                    if media_alt:
+                        md_kwargs["video_alt"] = media_alt
+                elif image_path:
                     md_kwargs["image_path"] = image_path
-                    if image_alt:
-                        md_kwargs["image_alt"] = image_alt
+                    if media_alt:
+                        md_kwargs["image_alt"] = media_alt
                 md_client.create_post(**md_kwargs)
                 log.info("mastodon_single_posted")
         except Exception as e:

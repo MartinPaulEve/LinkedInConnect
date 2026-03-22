@@ -72,14 +72,15 @@ class BlueskyClient:
         thumbnail_url: str | None = None,
         image_path: str | None = None,
         image_alt: str | None = None,
+        video_path: str | None = None,
+        video_alt: str | None = None,
     ) -> str:
         """Create a Bluesky post. Returns the post URL.
 
-        If image_path is provided, the local image is uploaded and
-        attached as an image embed. If link_url is provided (and no
-        image_path), a link card embed is created. Image embeds take
-        precedence over link card embeds. image_alt sets the alt
-        text for the image.
+        If video_path is provided, the video is uploaded and attached
+        as a video embed. If image_path is provided, the image is
+        uploaded as an image embed. If link_url is provided (and no
+        media), a link card embed is created. Video > image > link.
         """
         log.info(
             "creating_bluesky_post",
@@ -87,13 +88,21 @@ class BlueskyClient:
             has_link=bool(link_url),
             has_thumbnail=bool(thumbnail_url),
             has_image=bool(image_path),
+            has_video=bool(video_path),
         )
 
         # Build facets so URLs in the text become clickable links
         text_builder = _build_text_with_links(text)
 
         embed = None
-        if image_path:
+        if video_path:
+            video_blob = self._upload_video_file(video_path)
+            if video_blob:
+                embed = models.AppBskyEmbedVideo.Main(
+                    video=video_blob,
+                    alt=video_alt or None,
+                )
+        elif image_path:
             image_blob = self._upload_image_file(image_path)
             if image_blob:
                 embed = models.AppBskyEmbedImages.Main(
@@ -136,26 +145,34 @@ class BlueskyClient:
         image_path: str | None = None,
         image_chunk_index: int = 0,
         image_alt: str | None = None,
+        video_path: str | None = None,
+        video_chunk_index: int = 0,
+        video_alt: str | None = None,
     ) -> str:
         """Post a thread of messages. Returns the URL of the first post.
 
         The link card embed is only attached to the first post.
         Each subsequent post is a reply to the previous one.
-        If image_path is provided, the image is attached to the chunk
-        at image_chunk_index. image_alt sets the alt text.
+        Media (video or image) is attached to the chunk at the
+        specified index.
         """
         log.info(
             "creating_bluesky_thread",
             chunk_count=len(chunks),
             has_link=bool(link_url),
             has_image=bool(image_path),
-            image_chunk_index=image_chunk_index if image_path else None,
+            has_video=bool(video_path),
         )
 
-        # Upload image blob once if provided
+        # Upload media blob once if provided (video takes priority)
+        video_blob = None
         image_blob = None
-        if image_path:
+        if video_path:
+            video_blob = self._upload_video_file(video_path)
+        elif image_path:
             image_blob = self._upload_image_file(image_path)
+
+        has_media = video_blob or image_blob
 
         root_response = None
         parent_response = None
@@ -164,7 +181,12 @@ class BlueskyClient:
             text_builder = _build_text_with_links(chunk)
 
             embed = None
-            if i == image_chunk_index and image_blob:
+            if i == video_chunk_index and video_blob:
+                embed = models.AppBskyEmbedVideo.Main(
+                    video=video_blob,
+                    alt=video_alt or None,
+                )
+            elif i == image_chunk_index and image_blob:
                 embed = models.AppBskyEmbedImages.Main(
                     images=[
                         models.AppBskyEmbedImages.Image(
@@ -173,7 +195,7 @@ class BlueskyClient:
                         )
                     ]
                 )
-            elif i == 0 and link_url and not image_blob:
+            elif i == 0 and link_url and not has_media:
                 thumb_blob = None
                 if thumbnail_url:
                     thumb_blob = self._upload_thumbnail(thumbnail_url)
@@ -208,6 +230,30 @@ class BlueskyClient:
             chunk_count=len(chunks),
         )
         return post_url
+
+    def _upload_video_file(self, video_path: str):
+        """Upload a local video file as a blob.
+
+        Returns the blob reference for use in video embeds, or None
+        on failure.
+        """
+        try:
+            with open(video_path, "rb") as f:
+                video_data = f.read()
+            upload = self._client.upload_blob(video_data)
+            log.info(
+                "bluesky_video_uploaded",
+                video_path=video_path,
+                size=len(video_data),
+            )
+            return upload.blob
+        except Exception as e:
+            log.warning(
+                "bluesky_video_upload_failed",
+                video_path=video_path,
+                error=str(e),
+            )
+            return None
 
     def _upload_image_file(self, image_path: str):
         """Upload a local image file as a blob.

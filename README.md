@@ -9,7 +9,7 @@
 ![AT Protocol](https://img.shields.io/badge/Bluesky-AT%20Protocol-0285FF?logo=bluesky&logoColor=white)
 ![Mastodon](https://img.shields.io/badge/Mastodon-API-6364FF?logo=mastodon&logoColor=white)
 ![LinkedIn](https://img.shields.io/badge/LinkedIn-API-0A66C2?logo=linkedin&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-305%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-354%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/Coverage-93%25-brightgreen)
 
 # linkedin-blog-sync
@@ -54,17 +54,26 @@ The image path is automatically detected and stripped from the posted text — y
 
 Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
 
-You can add alt text to images by placing it in square brackets immediately after the image path:
+**Video uploads** work the same way — just reference a local video file:
+
+```bash
+linkedin-sync single "Check out this demo ~/recordings/demo.mp4"
+```
+
+Supported video formats: `.mp4`, `.mov`, `.mkv`, `.avi`, `.webm`, `.m4v`. Files that aren't already MP4/H.264 are automatically transcoded via `ffmpeg` before uploading for maximum platform compatibility. You need `ffmpeg` installed on your system for transcoding.
+
+You can add alt text to images or videos by placing it in square brackets immediately after the file path:
 
 ```bash
 linkedin-sync single "A post. ~/spencer.jpeg [An image of a bear]"
+linkedin-sync single "Watch ~/clip.mp4 [A cat dancing on a piano]"
 ```
 
-The alt text is set on the image attachment for all three platforms (LinkedIn, Bluesky, and Mastodon) and stripped from the posted text along with the image path. If no alt text is provided, the image is uploaded without it.
+The alt text is set on the media attachment for all three platforms (LinkedIn, Bluesky, and Mastodon) and stripped from the posted text along with the file path. If no alt text is provided, the media is uploaded without it.
 
-For threaded messages, the image is placed on the correct thread post based on where it appeared in the original text. If you put the image path near the end of a long message, it will be attached to the later thread post, not the first one.
+For threaded messages, the media is placed on the correct thread post based on where it appeared in the original text. If you put the file path near the end of a long message, it will be attached to the later thread post, not the first one.
 
-You can combine an image with a URL in the same message. On LinkedIn, the image takes precedence over the link card embed.
+You can combine media with a URL in the same message. On LinkedIn, media takes precedence over the link card embed.
 
 **`linkedin-sync image-check <path>`** — scans a local markdown file for image references (markdown `![](...)` syntax, HTML `<img>` tags, and front matter `image:` fields), then resizes any that exceed 1200×630 pixels. The resize preserves the original aspect ratio — it scales down to fit within the bounding box without cropping or stretching. This is useful for getting images into shape before posting.
 
@@ -129,7 +138,7 @@ uv run pytest -v        # verbose
 uv run pytest --cov     # with coverage
 ```
 
-Current state: **305 tests passing, 93% line coverage**. Coverage by module:
+Current state: **354 tests passing, 93% line coverage**. Coverage by module:
 
 | Module | Coverage |
 |--------|----------|

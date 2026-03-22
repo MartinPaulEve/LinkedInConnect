@@ -213,11 +213,104 @@ class LinkedInClient:
 
         return image_urn
 
+    def upload_video(self, video_path: str) -> str:
+        """Upload a video to LinkedIn and return the video URN.
+
+        Uses the Videos REST API with a multi-step flow:
+        1. Initialize upload (declares file size, gets upload URLs)
+        2. Upload binary chunks to the provided URLs
+        3. Finalize the upload
+
+        Returns the video URN (e.g. ``urn:li:video:C5F...``).
+        """
+        if not Path(video_path).exists():
+            raise FileNotFoundError(f"Video not found: {video_path}")
+
+        file_size = Path(video_path).stat().st_size
+        log.info(
+            "uploading_video",
+            path=video_path,
+            size_bytes=file_size,
+        )
+
+        # Step 1: Initialize upload
+        init_resp = self._session.post(
+            f"{LINKEDIN_REST_BASE}/videos?action=initializeUpload",
+            headers={"Content-Type": "application/json"},
+            json={
+                "initializeUploadRequest": {
+                    "owner": self.person_urn,
+                    "fileSizeBytes": file_size,
+                    "uploadCaptions": False,
+                    "uploadThumbnail": False,
+                }
+            },
+        )
+        if not init_resp.ok:
+            self._raise_with_diagnostics(init_resp)
+
+        init_data = init_resp.json()
+        video_urn = init_data["value"]["video"]
+        upload_instructions = init_data["value"][
+            "uploadInstructions"
+        ]
+        log.debug(
+            "video_upload_initialized",
+            video_urn=video_urn,
+            num_parts=len(upload_instructions),
+        )
+
+        # Step 2: Upload binary chunks
+        with open(video_path, "rb") as f:
+            video_data = f.read()
+
+        etags: list[dict] = []
+        for part in upload_instructions:
+            upload_url = part["uploadUrl"]
+            # Each instruction may specify byte range; for small
+            # files there is typically one part covering the whole
+            # file.
+            resp = requests.put(
+                upload_url,
+                headers={
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Content-Type": "application/octet-stream",
+                },
+                data=video_data,
+            )
+            resp.raise_for_status()
+            etag = resp.headers.get("ETag")
+            if etag:
+                etags.append({"etag": etag})
+
+        # Step 3: Finalize upload
+        finalize_resp = self._session.post(
+            f"{LINKEDIN_REST_BASE}/videos?action=finalizeUpload",
+            headers={"Content-Type": "application/json"},
+            json={
+                "finalizeUploadRequest": {
+                    "video": video_urn,
+                    "uploadToken": "",
+                    "uploadedPartIds": etags or [],
+                }
+            },
+        )
+        if not finalize_resp.ok:
+            self._raise_with_diagnostics(finalize_resp)
+
+        log.info(
+            "video_uploaded",
+            video_urn=video_urn,
+            size_bytes=file_size,
+        )
+        return video_urn
+
     def create_post(
         self,
         text: str,
         image_urn: str | None = None,
         image_alt_text: str | None = None,
+        video_urn: str | None = None,
         article_url: str | None = None,
         article_title: str | None = None,
         article_description: str | None = None,
@@ -228,6 +321,7 @@ class LinkedInClient:
             text: The post commentary text.
             image_urn: Optional image URN from upload_image().
             image_alt_text: Alt text for the image.
+            video_urn: Optional video URN from upload_video().
             article_url: Optional URL to share as an article link.
             article_title: Title for the article link.
             article_description: Description for the article link.
@@ -236,6 +330,7 @@ class LinkedInClient:
             "creating_post",
             text_length=len(text),
             has_image=bool(image_urn),
+            has_video=bool(video_urn),
             has_article=bool(article_url),
         )
 
@@ -252,7 +347,13 @@ class LinkedInClient:
             "isReshareDisabledByAuthor": False,
         }
 
-        if image_urn:
+        if video_urn:
+            body["content"] = {
+                "media": {
+                    "id": video_urn,
+                }
+            }
+        elif image_urn:
             body["content"] = {
                 "media": {
                     "id": image_urn,
