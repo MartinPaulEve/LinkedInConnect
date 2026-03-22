@@ -33,34 +33,54 @@ _IMAGE_PATH_RE = re.compile(
     r"(?:~|\.\.?)?/[^\s]+\.(?:png|jpg|jpeg|gif|webp)", re.IGNORECASE
 )
 
+# Regex to find alt text in square brackets immediately after an image
+# path (with optional whitespace between)
+_ALT_TEXT_RE = re.compile(r"\s*\[([^\]]*)\]")
 
-def _extract_local_image(message: str) -> tuple[str, str | None]:
-    """Extract a local image path from the message text.
 
-    Returns (clean_message, resolved_image_path) or (message, None) if
-    no valid local image was found. The image path is removed from the
-    message text and extra whitespace is collapsed.
+def _extract_local_image(
+    message: str,
+) -> tuple[str, str | None, str | None]:
+    """Extract a local image path and optional alt text from message.
+
+    Alt text is specified in square brackets immediately after the
+    image path, e.g.: ``~/photo.png [A lovely sunset]``
+
+    Returns (clean_message, resolved_image_path, alt_text).
+    If no valid image is found, returns (message, None, None).
+    Both the image path and the alt text marker are stripped from
+    the clean message.
     """
     match = _IMAGE_PATH_RE.search(message)
     if not match:
-        return message, None
+        return message, None, None
 
     path_str = match.group(0)
 
     # Skip URLs (http/https) - they shouldn't match but be safe
     before = message[: match.start()]
     if before.rstrip().endswith(("http:", "https:")):
-        return message, None
+        return message, None, None
 
     resolved = Path(path_str).expanduser().resolve()
     if not resolved.exists():
-        return message, None
+        return message, None, None
 
-    # Remove the path from the message and clean up whitespace
-    clean = message[: match.start()] + message[match.end() :]
+    # Check for alt text in brackets right after the image path
+    alt_text = None
+    remove_end = match.end()
+    alt_match = _ALT_TEXT_RE.match(message, match.end())
+    if alt_match:
+        raw_alt = alt_match.group(1).strip()
+        if raw_alt:
+            alt_text = raw_alt
+        remove_end = alt_match.end()
+
+    # Remove the path (and alt text) from the message
+    clean = message[: match.start()] + message[remove_end:]
     clean = re.sub(r"  +", " ", clean).strip()
 
-    return clean, str(resolved)
+    return clean, str(resolved), alt_text
 
 
 def _image_chunk_index(
@@ -720,10 +740,16 @@ def single(ctx, message):
     image_match = _IMAGE_PATH_RE.search(message)
     image_char_pos = image_match.start() if image_match else 0
     original_len = len(message)
-    clean_message, image_path = _extract_local_image(message)
+    clean_message, image_path, image_alt = _extract_local_image(
+        message
+    )
 
     if image_path:
-        log.info("local_image_detected", image_path=image_path)
+        log.info(
+            "local_image_detected",
+            image_path=image_path,
+            alt_text=image_alt,
+        )
 
     # Use the cleaned message (without image path) for posting
     message = clean_message
@@ -806,6 +832,8 @@ def single(ctx, message):
                         image_path=image_path
                     )
                     li_kwargs["image_urn"] = image_urn
+                    if image_alt:
+                        li_kwargs["image_alt_text"] = image_alt
                 except Exception as e:
                     log.warning(
                         "linkedin_image_upload_failed", error=str(e)
@@ -827,6 +855,8 @@ def single(ctx, message):
                 if image_path:
                     bs_kwargs["image_path"] = image_path
                     bs_kwargs["image_chunk_index"] = bs_image_idx
+                    if image_alt:
+                        bs_kwargs["image_alt"] = image_alt
                 bs_client.create_thread(bs_chunks, **bs_kwargs)
                 log.info(
                     "bluesky_thread_posted",
@@ -838,6 +868,8 @@ def single(ctx, message):
                     bs_kwargs["link_url"] = link_url
                 if image_path:
                     bs_kwargs["image_path"] = image_path
+                    if image_alt:
+                        bs_kwargs["image_alt"] = image_alt
                 bs_client.create_post(**bs_kwargs)
                 log.info("bluesky_single_posted")
         except Exception as e:
@@ -851,6 +883,8 @@ def single(ctx, message):
                 if image_path:
                     md_kwargs["image_path"] = image_path
                     md_kwargs["image_chunk_index"] = md_image_idx
+                    if image_alt:
+                        md_kwargs["image_alt"] = image_alt
                 md_client.create_thread(md_chunks, **md_kwargs)
                 log.info(
                     "mastodon_thread_posted",
@@ -860,6 +894,8 @@ def single(ctx, message):
                 md_kwargs = {"text": message}
                 if image_path:
                     md_kwargs["image_path"] = image_path
+                    if image_alt:
+                        md_kwargs["image_alt"] = image_alt
                 md_client.create_post(**md_kwargs)
                 log.info("mastodon_single_posted")
         except Exception as e:

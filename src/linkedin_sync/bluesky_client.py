@@ -71,13 +71,15 @@ class BlueskyClient:
         link_description: str | None = None,
         thumbnail_url: str | None = None,
         image_path: str | None = None,
+        image_alt: str | None = None,
     ) -> str:
         """Create a Bluesky post. Returns the post URL.
 
         If image_path is provided, the local image is uploaded and
         attached as an image embed. If link_url is provided (and no
         image_path), a link card embed is created. Image embeds take
-        precedence over link card embeds.
+        precedence over link card embeds. image_alt sets the alt
+        text for the image.
         """
         log.info(
             "creating_bluesky_post",
@@ -97,7 +99,8 @@ class BlueskyClient:
                 embed = models.AppBskyEmbedImages.Main(
                     images=[
                         models.AppBskyEmbedImages.Image(
-                            alt="", image=image_blob
+                            alt=image_alt or "",
+                            image=image_blob,
                         )
                     ]
                 )
@@ -132,13 +135,14 @@ class BlueskyClient:
         thumbnail_url: str | None = None,
         image_path: str | None = None,
         image_chunk_index: int = 0,
+        image_alt: str | None = None,
     ) -> str:
         """Post a thread of messages. Returns the URL of the first post.
 
         The link card embed is only attached to the first post.
         Each subsequent post is a reply to the previous one.
         If image_path is provided, the image is attached to the chunk
-        at image_chunk_index.
+        at image_chunk_index. image_alt sets the alt text.
         """
         log.info(
             "creating_bluesky_thread",
@@ -164,7 +168,8 @@ class BlueskyClient:
                 embed = models.AppBskyEmbedImages.Main(
                     images=[
                         models.AppBskyEmbedImages.Image(
-                            alt="", image=image_blob
+                            alt=image_alt or "",
+                            image=image_blob,
                         )
                     ]
                 )

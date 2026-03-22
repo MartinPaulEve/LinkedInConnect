@@ -5,14 +5,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from linkedin_sync.sync import _extract_local_image, _image_chunk_index, cli
+from linkedin_sync.sync import (
+    _extract_local_image,
+    _image_chunk_index,
+    cli,
+)
 
 
 class TestExtractLocalImage:
     """Test detection and extraction of local image paths from messages."""
 
     def test_no_image_returns_none(self):
-        clean, path = _extract_local_image("Just a plain message")
+        clean, path, _alt = _extract_local_image("Just a plain message")
         assert clean == "Just a plain message"
         assert path is None
 
@@ -20,7 +24,7 @@ class TestExtractLocalImage:
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake-png")
         msg = f"Check this out {img} cool right"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert str(img) not in clean
         assert clean == "Check this out cool right"
@@ -29,7 +33,7 @@ class TestExtractLocalImage:
         img = tmp_path / "photo.jpg"
         img.write_bytes(b"fake-jpg")
         msg = f"Look at {img}"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert str(img) not in clean
         assert clean == "Look at"
@@ -38,7 +42,7 @@ class TestExtractLocalImage:
         img = tmp_path / "photo.jpeg"
         img.write_bytes(b"fake-jpeg")
         msg = f"{img} is great"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert clean == "is great"
 
@@ -47,7 +51,7 @@ class TestExtractLocalImage:
         img.write_bytes(b"fake")
         monkeypatch.setenv("HOME", str(tmp_path))
         msg = "Here is ~/image.png for you"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert "~/image.png" not in clean
         assert clean == "Here is for you"
@@ -57,7 +61,7 @@ class TestExtractLocalImage:
         img = tmp_path / "pic.gif"
         img.write_bytes(b"fake-gif")
         msg = "Look ./pic.gif nice"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert clean == "Look nice"
 
@@ -68,19 +72,19 @@ class TestExtractLocalImage:
         img = tmp_path / "pic.webp"
         img.write_bytes(b"fake-webp")
         msg = "See ../pic.webp here"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
         assert clean == "See here"
 
     def test_nonexistent_file_ignored(self):
         msg = "Look at /nonexistent/path/image.png nice"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path is None
         assert clean == msg
 
     def test_url_not_matched(self):
         msg = "See https://example.com/image.png for details"
-        clean, path = _extract_local_image(msg)
+        clean, path, _alt = _extract_local_image(msg)
         assert path is None
         assert clean == msg
 
@@ -89,14 +93,14 @@ class TestExtractLocalImage:
             img = tmp_path / f"test.{ext}"
             img.write_bytes(b"fake")
             msg = f"Image {img} here"
-            _clean, path = _extract_local_image(msg)
+            _clean, path, _alt = _extract_local_image(msg)
             assert path == str(img), f"Failed for .{ext}"
 
     def test_cleans_double_spaces(self, tmp_path):
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake")
         msg = f"Before {img} after"
-        clean, _path = _extract_local_image(msg)
+        clean, _path, _alt = _extract_local_image(msg)
         assert "  " not in clean
         assert clean == "Before after"
 
@@ -104,14 +108,14 @@ class TestExtractLocalImage:
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake")
         msg = f"{img} is the image"
-        clean, _path = _extract_local_image(msg)
+        clean, _path, _alt = _extract_local_image(msg)
         assert clean == "is the image"
 
     def test_image_at_end(self, tmp_path):
         img = tmp_path / "photo.png"
         img.write_bytes(b"fake")
         msg = f"Look at this {img}"
-        clean, _path = _extract_local_image(msg)
+        clean, _path, _alt = _extract_local_image(msg)
         assert clean == "Look at this"
 
     def test_returns_char_position_for_chunk_mapping(
@@ -122,8 +126,61 @@ class TestExtractLocalImage:
         # Image appears later in the message
         prefix = "A" * 200 + " "
         msg = f"{prefix}{img} end"
-        _clean, path = _extract_local_image(msg)
+        _clean, path, _alt = _extract_local_image(msg)
         assert path == str(img)
+
+    def test_alt_text_extracted(self, tmp_path):
+        img = tmp_path / "bear.jpeg"
+        img.write_bytes(b"fake")
+        msg = f"A post. {img} [An image of a bear]"
+        clean, path, alt = _extract_local_image(msg)
+        assert path == str(img)
+        assert alt == "An image of a bear"
+        assert "[An image of a bear]" not in clean
+        assert str(img) not in clean
+        assert clean == "A post."
+
+    def test_alt_text_with_space_before_bracket(self, tmp_path):
+        img = tmp_path / "cat.png"
+        img.write_bytes(b"fake")
+        msg = f"Look {img} [A fluffy cat] nice"
+        clean, _path, alt = _extract_local_image(msg)
+        assert alt == "A fluffy cat"
+        assert clean == "Look nice"
+
+    def test_no_alt_text_returns_none(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"fake")
+        msg = f"Just {img} here"
+        clean, path, alt = _extract_local_image(msg)
+        assert path == str(img)
+        assert alt is None
+        assert clean == "Just here"
+
+    def test_alt_text_empty_brackets(self, tmp_path):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"fake")
+        msg = f"Post {img} [] more"
+        clean, _path, alt = _extract_local_image(msg)
+        assert alt is None
+        assert clean == "Post more"
+
+    def test_alt_text_not_immediately_after(self, tmp_path):
+        """Brackets not right after image are not alt text."""
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"fake")
+        msg = f"Post {img} some words [not alt]"
+        clean, _path, alt = _extract_local_image(msg)
+        assert alt is None
+        assert "[not alt]" in clean
+
+    def test_alt_text_at_end_of_message(self, tmp_path):
+        img = tmp_path / "spencer.jpeg"
+        img.write_bytes(b"fake")
+        msg = f"A post. {img} [An image of a bear]"
+        clean, _path, alt = _extract_local_image(msg)
+        assert alt == "An image of a bear"
+        assert clean == "A post."
 
 
 class TestImageChunkIndex:
@@ -339,6 +396,93 @@ class TestSingleCommandWithImage:
         assert li_kwargs["image_urn"] == "urn:li:image:123"
 
     @patch("linkedin_sync.sync._make_clients")
+    def test_alt_text_passed_to_all_platforms(
+        self, mock_mc, runner, tmp_path
+    ):
+        img = tmp_path / "bear.jpeg"
+        img.write_bytes(b"fake-jpeg-data")
+
+        li = MagicMock()
+        li.upload_image.return_value = "urn:li:image:123"
+        li.create_post.return_value = "urn:li:share:456"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/1"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/1"
+        mock_mc.return_value = (li, bs, md)
+
+        msg = f"A post. {img} [An image of a bear]"
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        # Alt text passed to LinkedIn
+        li_kwargs = li.create_post.call_args.kwargs
+        assert li_kwargs["image_alt_text"] == "An image of a bear"
+        # Alt text in posted text
+        assert "[An image of a bear]" not in li_kwargs["text"]
+        assert str(img) not in li_kwargs["text"]
+
+        # Alt text passed to Bluesky
+        bs_kwargs = bs.create_post.call_args.kwargs
+        assert bs_kwargs["image_alt"] == "An image of a bear"
+
+        # Alt text passed to Mastodon
+        md_kwargs = md.create_post.call_args.kwargs
+        assert md_kwargs["image_alt"] == "An image of a bear"
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_no_alt_text_not_passed(
+        self, mock_mc, runner, tmp_path
+    ):
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"fake-png-data")
+
+        li = MagicMock()
+        li.upload_image.return_value = "urn:li:image:123"
+        li.create_post.return_value = "urn:li:share:456"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/1"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/1"
+        mock_mc.return_value = (li, bs, md)
+
+        result = runner.invoke(
+            cli, ["single", f"No alt {img}"]
+        )
+        assert result.exit_code == 0
+
+        li_kwargs = li.create_post.call_args.kwargs
+        assert li_kwargs.get("image_alt_text") is None
+        bs_kwargs = bs.create_post.call_args.kwargs
+        assert bs_kwargs.get("image_alt") is None
+        md_kwargs = md.create_post.call_args.kwargs
+        assert md_kwargs.get("image_alt") is None
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_alt_text_in_thread(
+        self, mock_mc, runner, tmp_path
+    ):
+        """Alt text should be passed through to threaded posts."""
+        img = tmp_path / "bear.jpeg"
+        img.write_bytes(b"fake")
+
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:456"
+        bs = MagicMock()
+        bs.create_thread.return_value = "https://bsky.app/post/t"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/1"
+        mock_mc.return_value = (li, bs, md)
+
+        prefix = "word " * 80  # 400 chars, threads on Bluesky
+        msg = f"{prefix}{img} [A bear photo]"
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        bs_kwargs = bs.create_thread.call_args.kwargs
+        assert bs_kwargs["image_alt"] == "A bear photo"
+
+    @patch("linkedin_sync.sync._make_clients")
     def test_linkedin_upload_failure_still_posts(
         self, mock_mc, runner, tmp_path
     ):
@@ -477,6 +621,70 @@ class TestBlueskyImageUpload:
         first_call = mock_client.send_post.call_args_list[0]
         assert first_call[1]["embed"] is not None
 
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_alt_text_set_on_image(
+        self, mock_client_cls, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        mock_client.send_post.return_value = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/xyz"
+        )
+        blob_ref = self._make_blob_ref()
+        mock_client.upload_blob.return_value = MagicMock(
+            blob=blob_ref
+        )
+        mock_client_cls.return_value = mock_client
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake")
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        client.create_post(
+            text="With image",
+            image_path=str(img),
+            image_alt="A nice photo",
+        )
+
+        call_kwargs = mock_client.send_post.call_args[1]
+        embed = call_kwargs["embed"]
+        assert embed.images[0].alt == "A nice photo"
+
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_no_alt_text_uses_empty_string(
+        self, mock_client_cls, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        mock_client.send_post.return_value = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/xyz"
+        )
+        blob_ref = self._make_blob_ref()
+        mock_client.upload_blob.return_value = MagicMock(
+            blob=blob_ref
+        )
+        mock_client_cls.return_value = mock_client
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake")
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        client.create_post(
+            text="With image", image_path=str(img)
+        )
+
+        call_kwargs = mock_client.send_post.call_args[1]
+        embed = call_kwargs["embed"]
+        assert embed.images[0].alt == ""
+
 
 class TestMastodonImageUpload:
     """Tests for Mastodon media upload in posts."""
@@ -546,6 +754,68 @@ class TestMastodonImageUpload:
         # Second post should have media_ids
         second_call = mock_api.status_post.call_args_list[1]
         assert second_call[1]["media_ids"] == ["media-456"]
+
+    @patch("linkedin_sync.mastodon_client.Mastodon")
+    def test_alt_text_passed_to_media_post(
+        self, mock_mastodon_cls, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv(
+            "MASTODON_INSTANCE_URL", "https://mastodon.social"
+        )
+        monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
+
+        mock_api = MagicMock()
+        mock_api.media_post.return_value = {"id": "media-789"}
+        mock_api.status_post.return_value = {
+            "url": "https://mastodon.social/@test/123",
+            "id": "123",
+        }
+        mock_mastodon_cls.return_value = mock_api
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake-png")
+
+        from linkedin_sync.mastodon_client import MastodonClient
+
+        client = MastodonClient()
+        client.create_post(
+            text="With image",
+            image_path=str(img),
+            image_alt="A bear",
+        )
+
+        mock_api.media_post.assert_called_once_with(
+            str(img), description="A bear"
+        )
+
+    @patch("linkedin_sync.mastodon_client.Mastodon")
+    def test_no_alt_text_no_description(
+        self, mock_mastodon_cls, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv(
+            "MASTODON_INSTANCE_URL", "https://mastodon.social"
+        )
+        monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "test-token")
+
+        mock_api = MagicMock()
+        mock_api.media_post.return_value = {"id": "media-789"}
+        mock_api.status_post.return_value = {
+            "url": "https://mastodon.social/@test/123",
+            "id": "123",
+        }
+        mock_mastodon_cls.return_value = mock_api
+
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake-png")
+
+        from linkedin_sync.mastodon_client import MastodonClient
+
+        client = MastodonClient()
+        client.create_post(
+            text="With image", image_path=str(img)
+        )
+
+        mock_api.media_post.assert_called_once_with(str(img))
 
     @patch("linkedin_sync.mastodon_client.Mastodon")
     def test_no_image_no_media_upload(

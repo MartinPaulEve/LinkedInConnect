@@ -56,12 +56,14 @@ class MastodonClient:
         visibility: str = "public",
         language: str = "en",
         image_path: str | None = None,
+        image_alt: str | None = None,
     ) -> str:
         """Create a Mastodon post. Returns the post URL.
 
         Links in the text are auto-embedded by Mastodon as preview
         cards, so no explicit link attachment is needed. If image_path
-        is provided, the image is uploaded and attached.
+        is provided, the image is uploaded and attached. image_alt
+        sets the alt text description for the image.
         """
         log.info(
             "creating_mastodon_post",
@@ -76,7 +78,9 @@ class MastodonClient:
         }
 
         if image_path:
-            media_id = self._upload_media(image_path)
+            media_id = self._upload_media(
+                image_path, description=image_alt
+            )
             if media_id:
                 kwargs["media_ids"] = [media_id]
 
@@ -93,12 +97,13 @@ class MastodonClient:
         language: str = "en",
         image_path: str | None = None,
         image_chunk_index: int = 0,
+        image_alt: str | None = None,
     ) -> str:
         """Post a thread of statuses. Returns the URL of the first post.
 
         Each subsequent status is posted as a reply to the previous one.
         If image_path is provided, the image is attached to the chunk
-        at image_chunk_index.
+        at image_chunk_index. image_alt sets the alt text.
         """
         log.info(
             "creating_mastodon_thread",
@@ -111,7 +116,9 @@ class MastodonClient:
         # Upload media once if provided
         media_id = None
         if image_path:
-            media_id = self._upload_media(image_path)
+            media_id = self._upload_media(
+                image_path, description=image_alt
+            )
 
         first_status = None
         parent_id = None
@@ -140,13 +147,20 @@ class MastodonClient:
         )
         return post_url
 
-    def _upload_media(self, image_path: str) -> str | None:
+    def _upload_media(
+        self, image_path: str, description: str | None = None
+    ) -> str | None:
         """Upload a local image file and return the media ID.
 
-        Returns the media ID string, or None on failure.
+        If description is provided it is set as the alt text for
+        the media attachment. Returns the media ID string, or None
+        on failure.
         """
         try:
-            media = self._client.media_post(image_path)
+            kwargs: dict = {}
+            if description:
+                kwargs["description"] = description
+            media = self._client.media_post(image_path, **kwargs)
             media_id = media["id"]
             log.info(
                 "mastodon_media_uploaded",

@@ -9,7 +9,7 @@
 ![AT Protocol](https://img.shields.io/badge/Bluesky-AT%20Protocol-0285FF?logo=bluesky&logoColor=white)
 ![Mastodon](https://img.shields.io/badge/Mastodon-API-6364FF?logo=mastodon&logoColor=white)
 ![LinkedIn](https://img.shields.io/badge/LinkedIn-API-0A66C2?logo=linkedin&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-292%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-305%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/Coverage-93%25-brightgreen)
 
 # linkedin-blog-sync
@@ -53,6 +53,14 @@ The image path is automatically detected and stripped from the posted text — y
 - Relative: `./image.gif` or `../assets/photo.webp`
 
 Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
+
+You can add alt text to images by placing it in square brackets immediately after the image path:
+
+```bash
+linkedin-sync single "A post. ~/spencer.jpeg [An image of a bear]"
+```
+
+The alt text is set on the image attachment for all three platforms (LinkedIn, Bluesky, and Mastodon) and stripped from the posted text along with the image path. If no alt text is provided, the image is uploaded without it.
 
 For threaded messages, the image is placed on the correct thread post based on where it appeared in the original text. If you put the image path near the end of a long message, it will be attached to the later thread post, not the first one.
 
@@ -121,7 +129,7 @@ uv run pytest -v        # verbose
 uv run pytest --cov     # with coverage
 ```
 
-Current state: **292 tests passing, 93% line coverage**. Coverage by module:
+Current state: **305 tests passing, 93% line coverage**. Coverage by module:
 
 | Module | Coverage |
 |--------|----------|
