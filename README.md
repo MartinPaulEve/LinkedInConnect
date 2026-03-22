@@ -9,7 +9,7 @@
 ![AT Protocol](https://img.shields.io/badge/Bluesky-AT%20Protocol-0285FF?logo=bluesky&logoColor=white)
 ![Mastodon](https://img.shields.io/badge/Mastodon-API-6364FF?logo=mastodon&logoColor=white)
 ![LinkedIn](https://img.shields.io/badge/LinkedIn-API-0A66C2?logo=linkedin&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-190%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-292%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/Coverage-93%25-brightgreen)
 
 # linkedin-blog-sync
@@ -37,6 +37,26 @@ It handles the differences between platforms so you don't have to think about th
 **`linkedin-sync post <url>`** — syncs a single post by its feed URL.
 
 **`linkedin-sync file <path>`** — syncs from a local markdown file instead of the feed. Useful when you want to post before the feed has updated, or when working with drafts.
+
+**`linkedin-sync single "<message>"`** — posts an ad-hoc message to all social networks. This doesn't use a feed or markdown file — it posts exactly what you type. If the message contains a URL, a link card embed is created on LinkedIn and Bluesky (Mastodon auto-embeds links). Long messages are automatically threaded on Bluesky (>300 chars) and Mastodon (>500 chars), with thread indicators (🧵1/3, etc.).
+
+You can include a local image path in the message and it will be uploaded as an image attachment on all platforms:
+
+```bash
+linkedin-sync single "Just published my new paper ~/screenshots/figure1.png"
+```
+
+The image path is automatically detected and stripped from the posted text — your followers will see `"Just published my new paper"` with the image attached, not the file path. Supported path formats:
+
+- Absolute paths: `/home/user/photos/image.png`
+- Home-relative: `~/photos/image.jpg`
+- Relative: `./image.gif` or `../assets/photo.webp`
+
+Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
+
+For threaded messages, the image is placed on the correct thread post based on where it appeared in the original text. If you put the image path near the end of a long message, it will be attached to the later thread post, not the first one.
+
+You can combine an image with a URL in the same message. On LinkedIn, the image takes precedence over the link card embed.
 
 **`linkedin-sync image-check <path>`** — scans a local markdown file for image references (markdown `![](...)` syntax, HTML `<img>` tags, and front matter `image:` fields), then resizes any that exceed 1200×630 pixels. The resize preserves the original aspect ratio — it scales down to fit within the bounding box without cropping or stretching. This is useful for getting images into shape before posting.
 
@@ -101,7 +121,7 @@ uv run pytest -v        # verbose
 uv run pytest --cov     # with coverage
 ```
 
-Current state: **190 tests passing, 93% line coverage**. Coverage by module:
+Current state: **292 tests passing, 93% line coverage**. Coverage by module:
 
 | Module | Coverage |
 |--------|----------|
