@@ -674,3 +674,24 @@ class TestMultiPlatformSync:
             with open(state_file) as f:
                 state = json.load(f)
             assert post.url not in state.get("synced_posts", {})
+
+
+def test_version_flag(runner):
+    """--version flag prints the version and exits."""
+    result = runner.invoke(cli, ["--version"])
+    assert result.exit_code == 0
+    assert "linkedin-blog-sync" in result.output
+    # Should contain a version-like string
+    import re
+
+    assert re.search(r"\d+\.\d+\.\d+", result.output)
+
+
+def test_version_command(runner):
+    """version subcommand prints the version and exits."""
+    result = runner.invoke(cli, ["version"])
+    assert result.exit_code == 0
+    assert "linkedin-blog-sync" in result.output
+    import re
+
+    assert re.search(r"\d+\.\d+\.\d+", result.output)

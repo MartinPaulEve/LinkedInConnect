@@ -79,6 +79,10 @@ You can combine media with a URL in the same message. On LinkedIn, media takes p
 
 **`linkedin-sync list`** — shows all previously synced posts and their platform URLs.
 
+**`linkedin-sync verify`** — checks API credentials for all configured platforms (LinkedIn, Bluesky, Mastodon) and reports whether each connection is working.
+
+**`linkedin-sync version`** — prints the current version of the tool. You can also use `linkedin-sync --version`.
+
 All commands accept `--dry-run` to preview without posting, `--force` to re-sync something already tracked, `--json-logs` for machine-readable output, and `-v` for debug logging. The `--summary` / `--no-summary` flag controls whether an LLM summary is generated.
 
 ## Setup
