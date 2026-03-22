@@ -1,3 +1,10 @@
+## v0.6.0 (2026-03-22)
+
+### Feat
+
+- add single command for ad-hoc social media posts
+- generalize tool for any Atom feed or markdown blog
+
 ## v0.5.4 (2026-03-21)
 
 ### Fix
