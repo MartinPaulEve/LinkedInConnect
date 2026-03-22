@@ -55,23 +55,32 @@ class MastodonClient:
         text: str,
         visibility: str = "public",
         language: str = "en",
+        image_path: str | None = None,
     ) -> str:
         """Create a Mastodon post. Returns the post URL.
 
         Links in the text are auto-embedded by Mastodon as preview
-        cards, so no explicit link attachment is needed.
+        cards, so no explicit link attachment is needed. If image_path
+        is provided, the image is uploaded and attached.
         """
         log.info(
             "creating_mastodon_post",
             text_length=len(text),
             visibility=visibility,
+            has_image=bool(image_path),
         )
 
-        status = self._client.status_post(
-            text,
-            visibility=visibility,
-            language=language,
-        )
+        kwargs: dict = {
+            "visibility": visibility,
+            "language": language,
+        }
+
+        if image_path:
+            media_id = self._upload_media(image_path)
+            if media_id:
+                kwargs["media_ids"] = [media_id]
+
+        status = self._client.status_post(text, **kwargs)
 
         post_url = status["url"]
         log.info("mastodon_post_created", post_url=post_url)
@@ -82,27 +91,40 @@ class MastodonClient:
         chunks: list[str],
         visibility: str = "public",
         language: str = "en",
+        image_path: str | None = None,
+        image_chunk_index: int = 0,
     ) -> str:
         """Post a thread of statuses. Returns the URL of the first post.
 
         Each subsequent status is posted as a reply to the previous one.
+        If image_path is provided, the image is attached to the chunk
+        at image_chunk_index.
         """
         log.info(
             "creating_mastodon_thread",
             chunk_count=len(chunks),
             visibility=visibility,
+            has_image=bool(image_path),
+            image_chunk_index=image_chunk_index if image_path else None,
         )
+
+        # Upload media once if provided
+        media_id = None
+        if image_path:
+            media_id = self._upload_media(image_path)
 
         first_status = None
         parent_id = None
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             kwargs: dict = {
                 "visibility": visibility,
                 "language": language,
             }
             if parent_id is not None:
                 kwargs["in_reply_to_id"] = parent_id
+            if i == image_chunk_index and media_id:
+                kwargs["media_ids"] = [media_id]
 
             status = self._client.status_post(chunk, **kwargs)
 
@@ -117,3 +139,25 @@ class MastodonClient:
             chunk_count=len(chunks),
         )
         return post_url
+
+    def _upload_media(self, image_path: str) -> str | None:
+        """Upload a local image file and return the media ID.
+
+        Returns the media ID string, or None on failure.
+        """
+        try:
+            media = self._client.media_post(image_path)
+            media_id = media["id"]
+            log.info(
+                "mastodon_media_uploaded",
+                image_path=image_path,
+                media_id=media_id,
+            )
+            return media_id
+        except Exception as e:
+            log.warning(
+                "mastodon_media_upload_failed",
+                image_path=image_path,
+                error=str(e),
+            )
+            return None

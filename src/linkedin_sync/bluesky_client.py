@@ -70,25 +70,38 @@ class BlueskyClient:
         link_title: str | None = None,
         link_description: str | None = None,
         thumbnail_url: str | None = None,
+        image_path: str | None = None,
     ) -> str:
         """Create a Bluesky post. Returns the post URL.
 
-        If link_url is provided, a link card embed is created.
-        If thumbnail_url is also provided, the image is fetched and
-        attached to the link card as a thumbnail preview.
+        If image_path is provided, the local image is uploaded and
+        attached as an image embed. If link_url is provided (and no
+        image_path), a link card embed is created. Image embeds take
+        precedence over link card embeds.
         """
         log.info(
             "creating_bluesky_post",
             text_length=len(text),
             has_link=bool(link_url),
             has_thumbnail=bool(thumbnail_url),
+            has_image=bool(image_path),
         )
 
         # Build facets so URLs in the text become clickable links
         text_builder = _build_text_with_links(text)
 
         embed = None
-        if link_url:
+        if image_path:
+            image_blob = self._upload_image_file(image_path)
+            if image_blob:
+                embed = models.AppBskyEmbedImages.Main(
+                    images=[
+                        models.AppBskyEmbedImages.Image(
+                            alt="", image=image_blob
+                        )
+                    ]
+                )
+        if embed is None and link_url:
             thumb_blob = None
             if thumbnail_url:
                 thumb_blob = self._upload_thumbnail(thumbnail_url)
@@ -117,17 +130,28 @@ class BlueskyClient:
         link_title: str | None = None,
         link_description: str | None = None,
         thumbnail_url: str | None = None,
+        image_path: str | None = None,
+        image_chunk_index: int = 0,
     ) -> str:
         """Post a thread of messages. Returns the URL of the first post.
 
         The link card embed is only attached to the first post.
         Each subsequent post is a reply to the previous one.
+        If image_path is provided, the image is attached to the chunk
+        at image_chunk_index.
         """
         log.info(
             "creating_bluesky_thread",
             chunk_count=len(chunks),
             has_link=bool(link_url),
+            has_image=bool(image_path),
+            image_chunk_index=image_chunk_index if image_path else None,
         )
+
+        # Upload image blob once if provided
+        image_blob = None
+        if image_path:
+            image_blob = self._upload_image_file(image_path)
 
         root_response = None
         parent_response = None
@@ -136,7 +160,15 @@ class BlueskyClient:
             text_builder = _build_text_with_links(chunk)
 
             embed = None
-            if i == 0 and link_url:
+            if i == image_chunk_index and image_blob:
+                embed = models.AppBskyEmbedImages.Main(
+                    images=[
+                        models.AppBskyEmbedImages.Image(
+                            alt="", image=image_blob
+                        )
+                    ]
+                )
+            elif i == 0 and link_url and not image_blob:
                 thumb_blob = None
                 if thumbnail_url:
                     thumb_blob = self._upload_thumbnail(thumbnail_url)
@@ -171,6 +203,30 @@ class BlueskyClient:
             chunk_count=len(chunks),
         )
         return post_url
+
+    def _upload_image_file(self, image_path: str):
+        """Upload a local image file as a blob.
+
+        Returns the blob reference for use in image embeds, or None
+        on failure.
+        """
+        try:
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+            upload = self._client.upload_blob(image_data)
+            log.info(
+                "bluesky_image_uploaded",
+                image_path=image_path,
+                size=len(image_data),
+            )
+            return upload.blob
+        except Exception as e:
+            log.warning(
+                "bluesky_image_upload_failed",
+                image_path=image_path,
+                error=str(e),
+            )
+            return None
 
     def _upload_thumbnail(self, image_url: str):
         """Fetch an image from a URL and upload it as a blob.

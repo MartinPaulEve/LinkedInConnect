@@ -27,6 +27,57 @@ log = get_logger(__name__)
 # Regex to find URLs in text (used by the single command)
 _URL_RE = re.compile(r"https?://[^\s)<>]+")
 
+# Regex to find local image file paths in text
+# Matches absolute paths, ~/paths, and ./paths ending with image extensions
+_IMAGE_PATH_RE = re.compile(
+    r"(?:~|\.\.?)?/[^\s]+\.(?:png|jpg|jpeg|gif|webp)", re.IGNORECASE
+)
+
+
+def _extract_local_image(message: str) -> tuple[str, str | None]:
+    """Extract a local image path from the message text.
+
+    Returns (clean_message, resolved_image_path) or (message, None) if
+    no valid local image was found. The image path is removed from the
+    message text and extra whitespace is collapsed.
+    """
+    match = _IMAGE_PATH_RE.search(message)
+    if not match:
+        return message, None
+
+    path_str = match.group(0)
+
+    # Skip URLs (http/https) - they shouldn't match but be safe
+    before = message[: match.start()]
+    if before.rstrip().endswith(("http:", "https:")):
+        return message, None
+
+    resolved = Path(path_str).expanduser().resolve()
+    if not resolved.exists():
+        return message, None
+
+    # Remove the path from the message and clean up whitespace
+    clean = message[: match.start()] + message[match.end() :]
+    clean = re.sub(r"  +", " ", clean).strip()
+
+    return clean, str(resolved)
+
+
+def _image_chunk_index(
+    char_position: int, message_length: int, num_chunks: int
+) -> int:
+    """Determine which thread chunk an image should be attached to.
+
+    Uses the character position of the image in the original message
+    to map it proportionally to the correct chunk.
+    """
+    if num_chunks <= 1:
+        return 0
+    if message_length <= 0:
+        return 0
+    fraction = char_position / message_length
+    return min(int(fraction * num_chunks), num_chunks - 1)
+
 
 @dataclass
 class SyncResult:
@@ -664,6 +715,19 @@ def single(ctx, message):
     only = ctx.obj.get("only")
     li_client, bs_client, md_client = _make_clients(dry_run, only)
 
+    # Extract local image path (if any) and clean it from the message
+    # Record the character position before cleaning for chunk mapping
+    image_match = _IMAGE_PATH_RE.search(message)
+    image_char_pos = image_match.start() if image_match else 0
+    original_len = len(message)
+    clean_message, image_path = _extract_local_image(message)
+
+    if image_path:
+        log.info("local_image_detected", image_path=image_path)
+
+    # Use the cleaned message (without image path) for posting
+    message = clean_message
+
     # Extract URLs from the message for link card embeds
     url_matches = _URL_RE.findall(message)
     link_url = url_matches[-1] if url_matches else None
@@ -675,11 +739,20 @@ def single(ctx, message):
     bs_chunks = split_message(message, BS_MAX)
     md_chunks = split_message(message, MD_MAX)
 
+    # Determine which chunk the image belongs to for each platform
+    bs_image_idx = _image_chunk_index(
+        image_char_pos, original_len, len(bs_chunks)
+    )
+    md_image_idx = _image_chunk_index(
+        image_char_pos, original_len, len(md_chunks)
+    )
+
     if dry_run:
         log.info(
             "dry_run_single",
             message=message,
             link_url=link_url,
+            image_path=image_path,
             platforms=_platform_names(li_client, bs_client, md_client),
         )
         # LinkedIn: always a single post
@@ -688,12 +761,14 @@ def single(ctx, message):
             length=len(message),
             posts=1,
             text=message,
+            has_image=bool(image_path),
         )
         # Bluesky threading breakdown
         log.info(
             "dry_run_bluesky_threading",
             total_posts=len(bs_chunks),
             threaded=len(bs_chunks) > 1,
+            image_chunk=bs_image_idx if image_path else None,
         )
         for i, chunk in enumerate(bs_chunks):
             log.info(
@@ -708,6 +783,7 @@ def single(ctx, message):
             "dry_run_mastodon_threading",
             total_posts=len(md_chunks),
             threaded=len(md_chunks) > 1,
+            image_chunk=md_image_idx if image_path else None,
         )
         for i, chunk in enumerate(md_chunks):
             log.info(
@@ -723,7 +799,18 @@ def single(ctx, message):
     if li_client:
         try:
             li_kwargs: dict = {"text": message}
-            if link_url:
+            image_urn = None
+            if image_path:
+                try:
+                    image_urn = li_client.upload_image(
+                        image_path=image_path
+                    )
+                    li_kwargs["image_urn"] = image_urn
+                except Exception as e:
+                    log.warning(
+                        "linkedin_image_upload_failed", error=str(e)
+                    )
+            if not image_urn and link_url:
                 li_kwargs["article_url"] = link_url
             li_client.create_post(**li_kwargs)
             log.info("linkedin_single_posted")
@@ -737,6 +824,9 @@ def single(ctx, message):
                 bs_kwargs: dict = {}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
+                if image_path:
+                    bs_kwargs["image_path"] = image_path
+                    bs_kwargs["image_chunk_index"] = bs_image_idx
                 bs_client.create_thread(bs_chunks, **bs_kwargs)
                 log.info(
                     "bluesky_thread_posted",
@@ -746,6 +836,8 @@ def single(ctx, message):
                 bs_kwargs = {"text": message}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
+                if image_path:
+                    bs_kwargs["image_path"] = image_path
                 bs_client.create_post(**bs_kwargs)
                 log.info("bluesky_single_posted")
         except Exception as e:
@@ -755,13 +847,20 @@ def single(ctx, message):
     if md_client:
         try:
             if len(md_chunks) > 1:
-                md_client.create_thread(md_chunks)
+                md_kwargs: dict = {}
+                if image_path:
+                    md_kwargs["image_path"] = image_path
+                    md_kwargs["image_chunk_index"] = md_image_idx
+                md_client.create_thread(md_chunks, **md_kwargs)
                 log.info(
                     "mastodon_thread_posted",
                     chunk_count=len(md_chunks),
                 )
             else:
-                md_client.create_post(text=message)
+                md_kwargs = {"text": message}
+                if image_path:
+                    md_kwargs["image_path"] = image_path
+                md_client.create_post(**md_kwargs)
                 log.info("mastodon_single_posted")
         except Exception as e:
             log.error("mastodon_single_failed", error=str(e))
