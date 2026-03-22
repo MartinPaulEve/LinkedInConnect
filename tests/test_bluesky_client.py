@@ -208,6 +208,122 @@ class TestBuildTextWithLinks:
         assert "https://eve.gd/2026/03/21/test/" in built
 
 
+class TestBlueskyCreateThread:
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_thread_two_chunks(self, mock_client_cls, monkeypatch):
+        """Two-chunk thread calls send_post twice, second with reply_to."""
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        first_resp = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/first",
+            cid="cid-first",
+        )
+        second_resp = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/second",
+            cid="cid-second",
+        )
+        mock_client.send_post.side_effect = [first_resp, second_resp]
+        mock_client_cls.return_value = mock_client
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        client.create_thread(["Part one 🧵1/2", "Part two 🧵2/2"])
+
+        assert mock_client.send_post.call_count == 2
+        # First call should have no reply_to
+        first_call = mock_client.send_post.call_args_list[0]
+        assert first_call[1].get("reply_to") is None
+        # Second call should have reply_to
+        second_call = mock_client.send_post.call_args_list[1]
+        assert second_call[1].get("reply_to") is not None
+
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_first_post_gets_embed(self, mock_client_cls, monkeypatch):
+        """Only the first post in a thread should get the link card embed."""
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        mock_client.send_post.return_value = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/xyz",
+            cid="cid-xyz",
+        )
+        mock_client_cls.return_value = mock_client
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        client.create_thread(
+            ["Part 1 🧵1/2", "Part 2 🧵2/2"],
+            link_url="https://eve.gd/post/",
+            link_title="My Post",
+        )
+
+        first_call = mock_client.send_post.call_args_list[0]
+        assert first_call[1]["embed"] is not None
+        second_call = mock_client.send_post.call_args_list[1]
+        assert second_call[1].get("embed") is None
+
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_returns_first_post_url(self, mock_client_cls, monkeypatch):
+        """create_thread should return the URL of the first post."""
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        mock_client.send_post.return_value = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/first",
+            cid="cid-first",
+        )
+        mock_client_cls.return_value = mock_client
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        url = client.create_thread(["Part 1 🧵1/2", "Part 2 🧵2/2"])
+
+        assert "bsky.app" in url
+        assert "first" in url
+
+    @patch("linkedin_sync.bluesky_client.Client")
+    def test_reply_ref_references_root_and_parent(
+        self, mock_client_cls, monkeypatch
+    ):
+        """For a 3-post thread, post 3 should ref root=post1, parent=post2."""
+        monkeypatch.setenv("BLUESKY_HANDLE", "test.bsky.social")
+        monkeypatch.setenv("BLUESKY_APP_PASSWORD", "test-pass")
+
+        mock_client = MagicMock()
+        resp1 = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/r1", cid="cid1"
+        )
+        resp2 = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/r2", cid="cid2"
+        )
+        resp3 = MagicMock(
+            uri="at://did:plc:abc/app.bsky.feed.post/r3", cid="cid3"
+        )
+        mock_client.send_post.side_effect = [resp1, resp2, resp3]
+        mock_client_cls.return_value = mock_client
+
+        from linkedin_sync.bluesky_client import BlueskyClient
+
+        client = BlueskyClient()
+        client.create_thread(
+            ["Part 1 🧵1/3", "Part 2 🧵2/3", "Part 3 🧵3/3"]
+        )
+
+        assert mock_client.send_post.call_count == 3
+        # Third call's reply_to should reference root and parent
+        third_call = mock_client.send_post.call_args_list[2]
+        reply_to = third_call[1]["reply_to"]
+        assert reply_to.root.uri == resp1.uri
+        assert reply_to.parent.uri == resp2.uri
+
+
 class TestUriToUrl:
     @patch("linkedin_sync.bluesky_client.Client")
     def test_converts_at_uri(self, mock_client_cls, monkeypatch):

@@ -20,6 +20,7 @@ from linkedin_sync.formatter import format_for_linkedin
 from linkedin_sync.logging_config import configure_logging, get_logger
 from linkedin_sync.summarizer import summarize_post, summarize_post_short
 from linkedin_sync.sync_tracker import SyncTracker
+from linkedin_sync.threader import split_message
 
 log = get_logger(__name__)
 
@@ -667,6 +668,13 @@ def single(ctx, message):
     url_matches = _URL_RE.findall(message)
     link_url = url_matches[-1] if url_matches else None
 
+    # Split message into chunks for platforms with lower limits
+    from linkedin_sync.bluesky_client import MAX_POST_LENGTH as BS_MAX
+    from linkedin_sync.mastodon_client import DEFAULT_MAX_LENGTH as MD_MAX
+
+    bs_chunks = split_message(message, BS_MAX)
+    md_chunks = split_message(message, MD_MAX)
+
     if dry_run:
         log.info(
             "dry_run_single",
@@ -674,6 +682,41 @@ def single(ctx, message):
             link_url=link_url,
             platforms=_platform_names(li_client, bs_client, md_client),
         )
+        # LinkedIn: always a single post
+        log.info(
+            "dry_run_linkedin",
+            length=len(message),
+            posts=1,
+            text=message,
+        )
+        # Bluesky threading breakdown
+        log.info(
+            "dry_run_bluesky_threading",
+            total_posts=len(bs_chunks),
+            threaded=len(bs_chunks) > 1,
+        )
+        for i, chunk in enumerate(bs_chunks):
+            log.info(
+                "dry_run_bluesky_chunk",
+                part=i + 1,
+                total=len(bs_chunks),
+                length=len(chunk),
+                text=chunk,
+            )
+        # Mastodon threading breakdown
+        log.info(
+            "dry_run_mastodon_threading",
+            total_posts=len(md_chunks),
+            threaded=len(md_chunks) > 1,
+        )
+        for i, chunk in enumerate(md_chunks):
+            log.info(
+                "dry_run_mastodon_chunk",
+                part=i + 1,
+                total=len(md_chunks),
+                length=len(chunk),
+                text=chunk,
+            )
         return
 
     # --- LinkedIn ---
@@ -690,19 +733,36 @@ def single(ctx, message):
     # --- Bluesky ---
     if bs_client:
         try:
-            bs_kwargs: dict = {"text": message}
-            if link_url:
-                bs_kwargs["link_url"] = link_url
-            bs_client.create_post(**bs_kwargs)
-            log.info("bluesky_single_posted")
+            if len(bs_chunks) > 1:
+                bs_kwargs: dict = {}
+                if link_url:
+                    bs_kwargs["link_url"] = link_url
+                bs_client.create_thread(bs_chunks, **bs_kwargs)
+                log.info(
+                    "bluesky_thread_posted",
+                    chunk_count=len(bs_chunks),
+                )
+            else:
+                bs_kwargs = {"text": message}
+                if link_url:
+                    bs_kwargs["link_url"] = link_url
+                bs_client.create_post(**bs_kwargs)
+                log.info("bluesky_single_posted")
         except Exception as e:
             log.error("bluesky_single_failed", error=str(e))
 
     # --- Mastodon ---
     if md_client:
         try:
-            md_client.create_post(text=message)
-            log.info("mastodon_single_posted")
+            if len(md_chunks) > 1:
+                md_client.create_thread(md_chunks)
+                log.info(
+                    "mastodon_thread_posted",
+                    chunk_count=len(md_chunks),
+                )
+            else:
+                md_client.create_post(text=message)
+                log.info("mastodon_single_posted")
         except Exception as e:
             log.error("mastodon_single_failed", error=str(e))
 

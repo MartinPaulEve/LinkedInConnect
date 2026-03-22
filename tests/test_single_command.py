@@ -161,3 +161,120 @@ class TestSingleCommand:
 
         md_kwargs = md.create_post.call_args.kwargs
         assert md_kwargs["text"] == msg
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_long_message_threads_on_bluesky(self, mock_mc, runner):
+        """A message over 300 chars should use create_thread on Bluesky."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:t"
+        bs = MagicMock()
+        bs.create_thread.return_value = "https://bsky.app/post/thread"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/t"
+        mock_mc.return_value = (li, bs, md)
+
+        # 350+ chars, exceeds Bluesky's 300 limit
+        msg = "word " * 71  # 355 chars
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        bs.create_post.assert_not_called()
+        bs.create_thread.assert_called_once()
+        # Verify chunks were passed
+        chunks = bs.create_thread.call_args[0][0]
+        assert len(chunks) >= 2
+        for chunk in chunks:
+            assert "🧵" in chunk
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_long_message_threads_on_mastodon(self, mock_mc, runner):
+        """A message over 500 chars should use create_thread on Mastodon."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:t"
+        bs = MagicMock()
+        bs.create_thread.return_value = "https://bsky.app/post/thread"
+        md = MagicMock()
+        md.create_thread.return_value = "https://mastodon.social/@u/thread"
+        mock_mc.return_value = (li, bs, md)
+
+        # 600+ chars, exceeds Mastodon's 500 limit
+        msg = "word " * 121  # 605 chars
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        md.create_post.assert_not_called()
+        md.create_thread.assert_called_once()
+        chunks = md.create_thread.call_args[0][0]
+        assert len(chunks) >= 2
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_short_message_does_not_thread(self, mock_mc, runner):
+        """A short message should use create_post, not create_thread."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:t"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/t"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/t"
+        mock_mc.return_value = (li, bs, md)
+
+        result = runner.invoke(cli, ["single", "Short message"])
+        assert result.exit_code == 0
+
+        bs.create_post.assert_called_once()
+        bs.create_thread.assert_not_called()
+        md.create_post.assert_called_once()
+        md.create_thread.assert_not_called()
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_linkedin_never_threads(self, mock_mc, runner):
+        """LinkedIn should always use create_post, even for long messages."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:t"
+        bs = MagicMock()
+        bs.create_thread.return_value = "https://bsky.app/post/thread"
+        md = MagicMock()
+        md.create_thread.return_value = "https://mastodon.social/@u/thread"
+        mock_mc.return_value = (li, bs, md)
+
+        msg = "word " * 200  # 1000 chars
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        li.create_post.assert_called_once()
+        li.create_thread.assert_not_called()
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_bluesky_thread_gets_link_url(self, mock_mc, runner):
+        """When threading on Bluesky, link_url should be passed."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:t"
+        bs = MagicMock()
+        bs.create_thread.return_value = "https://bsky.app/post/thread"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/t"
+        mock_mc.return_value = (li, bs, md)
+
+        msg = "word " * 60 + "https://example.com/article"
+        result = runner.invoke(cli, ["single", msg])
+        assert result.exit_code == 0
+
+        bs_kwargs = bs.create_thread.call_args[1]
+        assert bs_kwargs["link_url"] == "https://example.com/article"
+
+    @patch("linkedin_sync.sync._make_clients")
+    def test_dry_run_shows_threading_breakdown(self, mock_mc, runner):
+        """Dry run for long message should show thread chunk info."""
+        mock_mc.return_value = (MagicMock(), MagicMock(), MagicMock())
+
+        msg = "word " * 71  # 355 chars, threads on Bluesky
+        result = runner.invoke(cli, ["--dry-run", "single", msg])
+        assert result.exit_code == 0
+
+        # Should not have posted anything
+        li, bs, md = mock_mc.return_value
+        li.create_post.assert_not_called()
+        bs.create_post.assert_not_called()
+        bs.create_thread.assert_not_called()
+        md.create_post.assert_not_called()
+        md.create_thread.assert_not_called()

@@ -76,3 +76,44 @@ class MastodonClient:
         post_url = status["url"]
         log.info("mastodon_post_created", post_url=post_url)
         return post_url
+
+    def create_thread(
+        self,
+        chunks: list[str],
+        visibility: str = "public",
+        language: str = "en",
+    ) -> str:
+        """Post a thread of statuses. Returns the URL of the first post.
+
+        Each subsequent status is posted as a reply to the previous one.
+        """
+        log.info(
+            "creating_mastodon_thread",
+            chunk_count=len(chunks),
+            visibility=visibility,
+        )
+
+        first_status = None
+        parent_id = None
+
+        for chunk in chunks:
+            kwargs: dict = {
+                "visibility": visibility,
+                "language": language,
+            }
+            if parent_id is not None:
+                kwargs["in_reply_to_id"] = parent_id
+
+            status = self._client.status_post(chunk, **kwargs)
+
+            if first_status is None:
+                first_status = status
+            parent_id = status["id"]
+
+        post_url = first_status["url"]
+        log.info(
+            "mastodon_thread_created",
+            post_url=post_url,
+            chunk_count=len(chunks),
+        )
+        return post_url

@@ -110,6 +110,68 @@ class BlueskyClient:
         log.info("bluesky_post_created", post_url=post_url)
         return post_url
 
+    def create_thread(
+        self,
+        chunks: list[str],
+        link_url: str | None = None,
+        link_title: str | None = None,
+        link_description: str | None = None,
+        thumbnail_url: str | None = None,
+    ) -> str:
+        """Post a thread of messages. Returns the URL of the first post.
+
+        The link card embed is only attached to the first post.
+        Each subsequent post is a reply to the previous one.
+        """
+        log.info(
+            "creating_bluesky_thread",
+            chunk_count=len(chunks),
+            has_link=bool(link_url),
+        )
+
+        root_response = None
+        parent_response = None
+
+        for i, chunk in enumerate(chunks):
+            text_builder = _build_text_with_links(chunk)
+
+            embed = None
+            if i == 0 and link_url:
+                thumb_blob = None
+                if thumbnail_url:
+                    thumb_blob = self._upload_thumbnail(thumbnail_url)
+                embed = models.AppBskyEmbedExternal.Main(
+                    external=models.AppBskyEmbedExternal.External(
+                        uri=link_url,
+                        title=link_title or "",
+                        description=link_description or "",
+                        thumb=thumb_blob,
+                    )
+                )
+
+            reply_to = None
+            if parent_response is not None:
+                reply_to = models.AppBskyFeedPost.ReplyRef(
+                    parent=models.create_strong_ref(parent_response),
+                    root=models.create_strong_ref(root_response),
+                )
+
+            response = self._client.send_post(
+                text_builder, embed=embed, reply_to=reply_to
+            )
+
+            if i == 0:
+                root_response = response
+            parent_response = response
+
+        post_url = self._uri_to_url(root_response.uri)
+        log.info(
+            "bluesky_thread_created",
+            post_url=post_url,
+            chunk_count=len(chunks),
+        )
+        return post_url
+
     def _upload_thumbnail(self, image_url: str):
         """Fetch an image from a URL and upload it as a blob.
 
