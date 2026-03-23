@@ -1,3 +1,9 @@
+## v0.10.1 (2026-03-23)
+
+### Fix
+
+- **feed**: add /images/ to site image URLs missing the path segment
+
 ## v0.10.0 (2026-03-23)
 
 ### Feat
