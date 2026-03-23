@@ -327,3 +327,77 @@ class TestGetPostByUrl:
             "https://eve.gd/nonexistent/", "https://example.com/feed.atom"
         )
         assert result is None
+
+
+class TestFixSiteImageUrl:
+    """Test that featured images on the site get /images/ path added."""
+
+    def test_bare_filename_on_site_gets_images_prefix(self, monkeypatch):
+        """https://eve.gd/book_open.jpg -> https://eve.gd/images/book_open.jpg"""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://eve.gd/book_open.jpg")
+        assert result == "https://eve.gd/images/book_open.jpg"
+
+    def test_already_has_images_path(self, monkeypatch):
+        """URL with /images/ should be unchanged."""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://eve.gd/images/book_open.jpg")
+        assert result == "https://eve.gd/images/book_open.jpg"
+
+    def test_external_url_unchanged(self, monkeypatch):
+        """URLs on other domains should not be modified."""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://other.com/photo.jpg")
+        assert result == "https://other.com/photo.jpg"
+
+    def test_url_with_subpath_unchanged(self, monkeypatch):
+        """URLs with an existing path (not just filename) should be kept."""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://eve.gd/uploads/photo.jpg")
+        assert result == "https://eve.gd/uploads/photo.jpg"
+
+    def test_none_input(self, monkeypatch):
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        assert _fix_site_image_url(None) is None
+
+    def test_non_image_url_unchanged(self, monkeypatch):
+        """Non-image URLs should not be modified."""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://eve.gd/page.html")
+        assert result == "https://eve.gd/page.html"
+
+    def test_trailing_slash_on_site_url(self, monkeypatch):
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd/")
+        from linkedin_sync.feed_parser import _fix_site_image_url
+
+        result = _fix_site_image_url("https://eve.gd/photo.png")
+        assert result == "https://eve.gd/images/photo.png"
+
+    def test_integrated_in_parse_entry(self, monkeypatch):
+        """_parse_entry should fix site image URLs."""
+        monkeypatch.setenv("BLOG_SITE_URL", "https://eve.gd")
+        entry = SimpleNamespace(
+            id="https://eve.gd/2026/03/23/test/",
+            title="Test Post",
+            link="https://eve.gd/2026/03/23/test/",
+            published_parsed=struct_time((2026, 3, 23, 0, 0, 0, 0, 82, 0)),
+            updated_parsed=None,
+            content=[{"value": '<img src="https://eve.gd/book.jpg" />'}],
+            tags=[],
+            author="Test",
+        )
+        post = _parse_entry(entry)
+        assert post is not None
+        assert post.featured_image_url == "https://eve.gd/images/book.jpg"
