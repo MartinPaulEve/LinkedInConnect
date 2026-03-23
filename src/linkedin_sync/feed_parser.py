@@ -96,8 +96,10 @@ def _parse_entry(entry) -> BlogPost | None:
     elif hasattr(entry, "summary"):
         content_html = entry.summary or ""
 
-    # Extract featured image
-    featured_image_url = _extract_featured_image(entry, content_html)
+    # Extract featured image and fix site-relative URLs
+    featured_image_url = _fix_site_image_url(
+        _extract_featured_image(entry, content_html)
+    )
 
     # Extract DOI
     doi = _extract_doi(content_html, title)
@@ -184,6 +186,52 @@ def _extract_featured_image(entry, content_html: str) -> str | None:
             return img["src"]
 
     return None
+
+
+# Image file extensions that should live under /images/ on the site
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg")
+
+
+def _fix_site_image_url(url: str | None) -> str | None:
+    """Fix image URLs on the blog site that are missing /images/.
+
+    When a feed contains ``https://eve.gd/photo.jpg`` but the real
+    path is ``https://eve.gd/images/photo.jpg``, this function
+    detects the pattern and inserts the ``/images/`` segment.
+
+    Only applies when:
+    - The URL is on the configured BLOG_SITE_URL domain
+    - The path is a bare filename (no intermediate directories)
+    - The filename has an image extension
+    """
+    if not url:
+        return url
+
+    site_url = get_site_url().rstrip("/")
+    if not url.startswith(site_url):
+        return url
+
+    # Extract the path after the site URL
+    path = url[len(site_url) :]
+    if not path.startswith("/"):
+        return url
+
+    # Check if path is just /filename.ext (one segment, no subdirs)
+    segments = [s for s in path.split("/") if s]
+    if len(segments) != 1:
+        return url
+
+    filename = segments[0]
+    if not any(filename.lower().endswith(ext) for ext in _IMAGE_EXTENSIONS):
+        return url
+
+    fixed = f"{site_url}/images/{filename}"
+    log.info(
+        "fixed_image_url",
+        original=url,
+        fixed=fixed,
+    )
+    return fixed
 
 
 def _extract_doi(content_html: str, title: str = "") -> str | None:
@@ -312,11 +360,18 @@ def parse_markdown_file(
 
     # Resolve relative image filenames to full URLs under /images/
     if featured_image_url and not featured_image_url.startswith(
-        ("http://", "https://", "/")
+        ("http://", "https://")
     ):
-        featured_image_url = (
-            f"{site_url.rstrip('/')}/images/{featured_image_url}"
-        )
+        if featured_image_url.startswith("/"):
+            # Root-relative path — prepend site URL
+            featured_image_url = f"{site_url.rstrip('/')}{featured_image_url}"
+        else:
+            # Bare filename — place under /images/
+            featured_image_url = (
+                f"{site_url.rstrip('/')}/images/{featured_image_url}"
+            )
+    # Fix site URLs that are missing /images/ (e.g. site/photo.jpg)
+    featured_image_url = _fix_site_image_url(featured_image_url)
 
     # DOI - check front matter first, then content
     doi_value = front_matter.get("doi") or _extract_doi(content_html, title)

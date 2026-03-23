@@ -149,6 +149,32 @@ class TestParseMarkdownFile:
         post = parse_markdown_file(str(md_file))
         assert post.featured_image_url == "https://eve.gd/images/photo.jpg"
 
+    def test_root_relative_image_with_images_dir(self, tmp_path):
+        """Root-relative path /images/photo.jpg should resolve correctly."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Root Rel Image\n"
+            "url: https://eve.gd/test/\n"
+            "image: /images/photo.jpg\n"
+            "---\nContent\n"
+        )
+        post = parse_markdown_file(str(md_file))
+        assert post.featured_image_url == "https://eve.gd/images/photo.jpg"
+
+    def test_root_relative_image_bare_filename_gets_images(self, tmp_path):
+        """Root-relative /photo.jpg should get /images/ inserted."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Root Bare Image\n"
+            "url: https://eve.gd/test/\n"
+            "image: /photo.jpg\n"
+            "---\nContent\n"
+        )
+        post = parse_markdown_file(str(md_file))
+        assert post.featured_image_url == "https://eve.gd/images/photo.jpg"
+
     def test_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             parse_markdown_file(str(tmp_path / "nonexistent.md"))
