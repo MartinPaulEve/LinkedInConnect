@@ -1,3 +1,13 @@
+## v0.9.0 (2026-03-23)
+
+### Feat
+
+- **single**: support multiple images per post
+
+### Fix
+
+- **bluesky**: auto-resize images exceeding blob size limit
+
 ## v0.8.0 (2026-03-22)
 
 ### Feat
