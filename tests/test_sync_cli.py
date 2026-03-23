@@ -695,3 +695,206 @@ def test_version_command(runner):
     import re
 
     assert re.search(r"\d+\.\d+\.\d+", result.output)
+
+
+class TestAutoImageCheck:
+    """Test auto image-check when processing local markdown files."""
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_file_command_runs_image_check(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """The file command should auto-resize images before syncing."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Image Post\n"
+            "url: https://example.com/img-post\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "![photo](photo.jpg)\n"
+        )
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"fake-image")
+        mock_extract.return_value = [img]
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "file",
+                str(md_file),
+            ],
+        )
+        assert result.exit_code == 0
+        mock_extract.assert_called_once_with(str(md_file))
+        mock_resize.assert_called_once_with(img)
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_post_command_with_local_file_runs_image_check(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """The post command with a local file should auto-resize images."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Image Post\n"
+            "url: https://example.com/img-post2\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "![photo](photo.jpg)\n"
+        )
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"fake-image")
+        mock_extract.return_value = [img]
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                str(md_file),
+            ],
+        )
+        assert result.exit_code == 0
+        mock_extract.assert_called_once_with(str(md_file))
+        mock_resize.assert_called_once_with(img)
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_post_command_with_url_skips_image_check(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """The post command with a URL should NOT run image-check."""
+        state_file = str(tmp_path / "state.json")
+        runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                "https://example.com/some-post",
+            ],
+        )
+        # Exits with error (post not in feed), but should not call image check
+        mock_extract.assert_not_called()
+        mock_resize.assert_not_called()
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_file_command_handles_no_images(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """If no images found, resize should not be called."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: No Images\n"
+            "url: https://example.com/no-img\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "Just text.\n"
+        )
+        mock_extract.return_value = []
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "file",
+                str(md_file),
+            ],
+        )
+        assert result.exit_code == 0
+        mock_extract.assert_called_once()
+        mock_resize.assert_not_called()
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_file_command_skips_missing_images(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """Images that don't exist on disk should be skipped."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Missing Image\n"
+            "url: https://example.com/missing\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "![photo](photo.jpg)\n"
+        )
+        nonexistent = tmp_path / "photo.jpg"  # does NOT exist
+        mock_extract.return_value = [nonexistent]
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "file",
+                str(md_file),
+            ],
+        )
+        assert result.exit_code == 0
+        mock_resize.assert_not_called()
+
+    @patch("linkedin_sync.sync.resize_image")
+    @patch("linkedin_sync.sync.extract_image_paths")
+    def test_file_command_multiple_images_all_resized(
+        self, mock_extract, mock_resize, runner, tmp_path
+    ):
+        """All found images should be resized."""
+        md_file = tmp_path / "post.md"
+        md_file.write_text(
+            "---\n"
+            "title: Multi Image\n"
+            "url: https://example.com/multi\n"
+            "date: 2026-03-21\n"
+            "---\n"
+            "\n"
+            "![a](a.jpg)\n![b](b.png)\n"
+        )
+        img_a = tmp_path / "a.jpg"
+        img_b = tmp_path / "b.png"
+        img_a.write_bytes(b"fake-a")
+        img_b.write_bytes(b"fake-b")
+        mock_extract.return_value = [img_a, img_b]
+
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "file",
+                str(md_file),
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_resize.call_count == 2
