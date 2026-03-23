@@ -278,3 +278,91 @@ class TestSingleCommand:
         bs.create_thread.assert_not_called()
         md.create_post.assert_not_called()
         md.create_thread.assert_not_called()
+
+    @patch("linkedin_sync.sync.fetch_og_metadata")
+    @patch("linkedin_sync.sync._make_clients")
+    def test_url_message_fetches_og_and_passes_to_platforms(
+        self, mock_mc, mock_og, runner
+    ):
+        """When a URL is present, OG metadata should be fetched and
+        passed to Bluesky (thumbnail_url, link_title, link_description)
+        and LinkedIn (article_title, article_description)."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:789"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/3"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/3"
+        mock_mc.return_value = (li, bs, md)
+
+        mock_og.return_value = {
+            "title": "OG Title",
+            "description": "OG Desc",
+            "image": "https://eve.gd/images/thumb.jpg",
+        }
+
+        result = runner.invoke(
+            cli,
+            [
+                "single",
+                "Check this out https://eve.gd/2026/03/23/article/",
+            ],
+        )
+        assert result.exit_code == 0
+
+        # Bluesky should receive OG metadata
+        bs_kwargs = bs.create_post.call_args.kwargs
+        assert bs_kwargs["link_url"] == "https://eve.gd/2026/03/23/article/"
+        assert bs_kwargs["thumbnail_url"] == "https://eve.gd/images/thumb.jpg"
+        assert bs_kwargs["link_title"] == "OG Title"
+        assert bs_kwargs["link_description"] == "OG Desc"
+
+        # LinkedIn should receive OG title/description
+        li_kwargs = li.create_post.call_args.kwargs
+        assert li_kwargs["article_url"] == "https://eve.gd/2026/03/23/article/"
+        assert li_kwargs["article_title"] == "OG Title"
+        assert li_kwargs["article_description"] == "OG Desc"
+
+    @patch("linkedin_sync.sync.fetch_og_metadata")
+    @patch("linkedin_sync.sync._make_clients")
+    def test_og_not_fetched_when_no_url(self, mock_mc, mock_og, runner):
+        """OG metadata should not be fetched for plain text messages."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:999"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/4"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/4"
+        mock_mc.return_value = (li, bs, md)
+
+        result = runner.invoke(cli, ["single", "No URL here"])
+        assert result.exit_code == 0
+        mock_og.assert_not_called()
+
+    @patch("linkedin_sync.sync.fetch_og_metadata")
+    @patch("linkedin_sync.sync._make_clients")
+    def test_og_not_fetched_when_local_images_present(
+        self, mock_mc, mock_og, runner, tmp_path
+    ):
+        """OG fetch should be skipped when local images are attached."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:111"
+        li.upload_image.return_value = "urn:li:image:111"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/5"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/5"
+        mock_mc.return_value = (li, bs, md)
+
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        result = runner.invoke(
+            cli,
+            [
+                "single",
+                f"Nice pic https://example.com/post {img}",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_og.assert_not_called()
