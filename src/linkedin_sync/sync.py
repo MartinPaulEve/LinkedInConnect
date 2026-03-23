@@ -239,6 +239,7 @@ def sync_post(
         log.info(
             "dry_run_preview",
             title=post.title,
+            featured_image_url=post.featured_image_url,
             linkedin_chars=len(linkedin_text),
             linkedin_text=linkedin_text,
         )
@@ -246,12 +247,14 @@ def sync_post(
             log.info(
                 "dry_run_bluesky",
                 chars=len(bluesky_text),
+                featured_image_url=post.featured_image_url,
                 text=bluesky_text,
             )
         if mastodon_text:
             log.info(
                 "dry_run_mastodon",
                 chars=len(mastodon_text),
+                featured_image_url=post.featured_image_url,
                 text=mastodon_text,
             )
         return SyncResult()
