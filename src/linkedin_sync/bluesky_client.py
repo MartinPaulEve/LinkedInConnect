@@ -63,6 +63,28 @@ class BlueskyClient:
         self._client.login(self.handle, self.app_password)
         log.info("bluesky_client_initialized", handle=self.handle)
 
+    def _build_images_embed(
+        self,
+        paths: list[str],
+        alts: list[str] | None = None,
+    ):
+        """Upload images and build an AppBskyEmbedImages.Main embed.
+
+        Returns the embed, or None if no images uploaded successfully.
+        Bluesky allows up to 4 images per post.
+        """
+        image_items = []
+        for i, path in enumerate(paths[:4]):  # Bluesky max 4 images
+            blob = self._upload_image_file(path)
+            if blob:
+                alt = alts[i] if alts and i < len(alts) else ""
+                image_items.append(
+                    models.AppBskyEmbedImages.Image(alt=alt, image=blob)
+                )
+        if not image_items:
+            return None
+        return models.AppBskyEmbedImages.Main(images=image_items)
+
     def create_post(
         self,
         text: str,
@@ -72,22 +94,30 @@ class BlueskyClient:
         thumbnail_url: str | None = None,
         image_path: str | None = None,
         image_alt: str | None = None,
+        image_paths: list[str] | None = None,
+        image_alts: list[str] | None = None,
         video_path: str | None = None,
         video_alt: str | None = None,
     ) -> str:
         """Create a Bluesky post. Returns the post URL.
 
         If video_path is provided, the video is uploaded and attached
-        as a video embed. If image_path is provided, the image is
-        uploaded as an image embed. If link_url is provided (and no
-        media), a link card embed is created. Video > image > link.
+        as a video embed. If image_paths (or image_path) is provided,
+        images are uploaded as an image embed (up to 4). If link_url
+        is provided (and no media), a link card embed is created.
+        Video > images > link.
         """
+        # Normalise single image param into list form
+        all_paths = image_paths or ([image_path] if image_path else [])
+        all_alts = image_alts or ([image_alt] if image_alt else None)
+
         log.info(
             "creating_bluesky_post",
             text_length=len(text),
             has_link=bool(link_url),
             has_thumbnail=bool(thumbnail_url),
-            has_image=bool(image_path),
+            has_image=bool(all_paths),
+            image_count=len(all_paths),
             has_video=bool(video_path),
         )
 
@@ -102,17 +132,8 @@ class BlueskyClient:
                     video=video_blob,
                     alt=video_alt or None,
                 )
-        elif image_path:
-            image_blob = self._upload_image_file(image_path)
-            if image_blob:
-                embed = models.AppBskyEmbedImages.Main(
-                    images=[
-                        models.AppBskyEmbedImages.Image(
-                            alt=image_alt or "",
-                            image=image_blob,
-                        )
-                    ]
-                )
+        elif all_paths:
+            embed = self._build_images_embed(all_paths, all_alts)
         if embed is None and link_url:
             thumb_blob = None
             if thumbnail_url:
@@ -148,31 +169,59 @@ class BlueskyClient:
         video_path: str | None = None,
         video_chunk_index: int = 0,
         video_alt: str | None = None,
+        images_by_chunk: (
+            dict[int, list[tuple[str, str | None]]] | None
+        ) = None,
     ) -> str:
         """Post a thread of messages. Returns the URL of the first post.
 
         The link card embed is only attached to the first post.
         Each subsequent post is a reply to the previous one.
         Media (video or image) is attached to the chunk at the
-        specified index.
+        specified index. When *images_by_chunk* is provided it
+        takes precedence over the single image_path/image_alt
+        params and maps chunk indices to lists of (path, alt) pairs.
         """
         log.info(
             "creating_bluesky_thread",
             chunk_count=len(chunks),
             has_link=bool(link_url),
-            has_image=bool(image_path),
+            has_image=bool(image_path or images_by_chunk),
             has_video=bool(video_path),
         )
 
-        # Upload media blob once if provided (video takes priority)
+        # Upload media blobs ------------------------------------------
         video_blob = None
-        image_blob = None
         if video_path:
             video_blob = self._upload_video_file(video_path)
-        elif image_path:
-            image_blob = self._upload_image_file(image_path)
 
-        has_media = video_blob or image_blob
+        # Build per-chunk image embeds when images_by_chunk is given
+        chunk_embeds: dict[int, object] = {}
+        has_media = bool(video_blob)
+
+        if not video_blob and images_by_chunk:
+            for idx, img_list in images_by_chunk.items():
+                embed = self._build_images_embed(
+                    [p for p, _a in img_list],
+                    [a or "" for _p, a in img_list],
+                )
+                if embed:
+                    chunk_embeds[idx] = embed
+                    has_media = True
+        elif not video_blob and image_path:
+            image_blob = self._upload_image_file(image_path)
+            if image_blob:
+                has_media = True
+                chunk_embeds[image_chunk_index] = (
+                    models.AppBskyEmbedImages.Main(
+                        images=[
+                            models.AppBskyEmbedImages.Image(
+                                alt=image_alt or "",
+                                image=image_blob,
+                            )
+                        ]
+                    )
+                )
 
         root_response = None
         parent_response = None
@@ -186,15 +235,8 @@ class BlueskyClient:
                     video=video_blob,
                     alt=video_alt or None,
                 )
-            elif i == image_chunk_index and image_blob:
-                embed = models.AppBskyEmbedImages.Main(
-                    images=[
-                        models.AppBskyEmbedImages.Image(
-                            alt=image_alt or "",
-                            image=image_blob,
-                        )
-                    ]
-                )
+            elif i in chunk_embeds:
+                embed = chunk_embeds[i]
             elif i == 0 and link_url and not has_media:
                 thumb_blob = None
                 if thumbnail_url:

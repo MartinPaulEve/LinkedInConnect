@@ -50,6 +50,23 @@ class MastodonClient:
             instance=self.instance_url,
         )
 
+    def _upload_multiple_media(
+        self,
+        paths: list[str],
+        alts: list[str] | None = None,
+    ) -> list[str]:
+        """Upload multiple media files. Returns list of media IDs.
+
+        Mastodon allows up to 4 media attachments per post.
+        """
+        media_ids = []
+        for i, path in enumerate(paths[:4]):  # Mastodon max 4
+            desc = alts[i] if alts and i < len(alts) else None
+            mid = self._upload_media(path, description=desc)
+            if mid:
+                media_ids.append(mid)
+        return media_ids
+
     def create_post(
         self,
         text: str,
@@ -57,6 +74,8 @@ class MastodonClient:
         language: str = "en",
         image_path: str | None = None,
         image_alt: str | None = None,
+        image_paths: list[str] | None = None,
+        image_alts: list[str] | None = None,
         video_path: str | None = None,
         video_alt: str | None = None,
     ) -> str:
@@ -64,14 +83,19 @@ class MastodonClient:
 
         Links in the text are auto-embedded by Mastodon as preview
         cards, so no explicit link attachment is needed. If video_path
-        or image_path is provided, the media is uploaded and attached.
-        Video takes precedence over image.
+        or image_paths/image_path is provided, media is uploaded and
+        attached. Video takes precedence over images.
         """
+        # Normalise single image param into list form
+        all_paths = image_paths or ([image_path] if image_path else [])
+        all_alts = image_alts or ([image_alt] if image_alt else None)
+
         log.info(
             "creating_mastodon_post",
             text_length=len(text),
             visibility=visibility,
-            has_image=bool(image_path),
+            has_image=bool(all_paths),
+            image_count=len(all_paths),
             has_video=bool(video_path),
         )
 
@@ -84,10 +108,10 @@ class MastodonClient:
             media_id = self._upload_media(video_path, description=video_alt)
             if media_id:
                 kwargs["media_ids"] = [media_id]
-        elif image_path:
-            media_id = self._upload_media(image_path, description=image_alt)
-            if media_id:
-                kwargs["media_ids"] = [media_id]
+        elif all_paths:
+            media_ids = self._upload_multiple_media(all_paths, all_alts)
+            if media_ids:
+                kwargs["media_ids"] = media_ids
 
         status = self._client.status_post(text, **kwargs)
 
@@ -106,30 +130,50 @@ class MastodonClient:
         video_path: str | None = None,
         video_chunk_index: int = 0,
         video_alt: str | None = None,
+        images_by_chunk: (
+            dict[int, list[tuple[str, str | None]]] | None
+        ) = None,
     ) -> str:
         """Post a thread of statuses. Returns the URL of the first post.
 
         Each subsequent status is posted as a reply to the previous one.
         Media (video or image) is attached to the chunk at the
-        specified index. Video takes precedence over image.
+        specified index. Video takes precedence over images. When
+        *images_by_chunk* is provided it takes precedence over the
+        single image_path/image_alt params and maps chunk indices
+        to lists of (path, alt) pairs.
         """
         log.info(
             "creating_mastodon_thread",
             chunk_count=len(chunks),
             visibility=visibility,
-            has_image=bool(image_path),
+            has_image=bool(image_path or images_by_chunk),
             has_video=bool(video_path),
         )
 
-        # Upload media once if provided (video takes priority)
-        media_id = None
-        media_chunk_idx = 0
+        # Build per-chunk media IDs -----------------------------------
+        # video_media: single media_id for the video (one chunk only)
+        video_media_id = None
+        video_chunk_idx = 0
+        # chunk_media_ids: mapping from chunk index to list of media_ids
+        chunk_media_ids: dict[int, list[str]] = {}
+
         if video_path:
-            media_id = self._upload_media(video_path, description=video_alt)
-            media_chunk_idx = video_chunk_index
+            video_media_id = self._upload_media(
+                video_path, description=video_alt
+            )
+            video_chunk_idx = video_chunk_index
+        elif images_by_chunk:
+            for idx, img_list in images_by_chunk.items():
+                paths = [p for p, _a in img_list]
+                alts = [a for _p, a in img_list]
+                media_ids = self._upload_multiple_media(paths, alts)
+                if media_ids:
+                    chunk_media_ids[idx] = media_ids
         elif image_path:
             media_id = self._upload_media(image_path, description=image_alt)
-            media_chunk_idx = image_chunk_index
+            if media_id:
+                chunk_media_ids[image_chunk_index] = [media_id]
 
         first_status = None
         parent_id = None
@@ -141,8 +185,10 @@ class MastodonClient:
             }
             if parent_id is not None:
                 kwargs["in_reply_to_id"] = parent_id
-            if i == media_chunk_idx and media_id:
-                kwargs["media_ids"] = [media_id]
+            if i == video_chunk_idx and video_media_id:
+                kwargs["media_ids"] = [video_media_id]
+            elif i in chunk_media_ids:
+                kwargs["media_ids"] = chunk_media_ids[i]
 
             status = self._client.status_post(chunk, **kwargs)
 
