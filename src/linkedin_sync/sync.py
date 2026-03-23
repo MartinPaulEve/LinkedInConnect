@@ -20,6 +20,7 @@ from linkedin_sync.feed_parser import (
 from linkedin_sync.formatter import format_for_linkedin
 from linkedin_sync.image_checker import extract_image_paths, resize_image
 from linkedin_sync.logging_config import configure_logging, get_logger
+from linkedin_sync.og_fetcher import fetch_og_metadata
 from linkedin_sync.summarizer import summarize_post, summarize_post_short
 from linkedin_sync.sync_tracker import SyncTracker
 from linkedin_sync.threader import split_message
@@ -886,6 +887,14 @@ def single(ctx, message):
     url_matches = _URL_RE.findall(message)
     link_url = url_matches[-1] if url_matches else None
 
+    # Fetch OpenGraph metadata for the link URL (only when no local media)
+    has_local_media = bool(image_items) or bool(video_path)
+    og_meta = (
+        fetch_og_metadata(link_url)
+        if link_url and not has_local_media
+        else {"title": "", "description": "", "image": None}
+    )
+
     # Split message into chunks for platforms with lower limits
     from linkedin_sync.bluesky_client import MAX_POST_LENGTH as BS_MAX
     from linkedin_sync.mastodon_client import DEFAULT_MAX_LENGTH as MD_MAX
@@ -1009,6 +1018,8 @@ def single(ctx, message):
                     has_li_media = True
             if not has_li_media and link_url:
                 li_kwargs["article_url"] = link_url
+                li_kwargs["article_title"] = og_meta["title"]
+                li_kwargs["article_description"] = og_meta["description"]
             li_client.create_post(**li_kwargs)
             log.info("linkedin_single_posted")
         except Exception as e:
@@ -1021,6 +1032,9 @@ def single(ctx, message):
                 bs_kwargs: dict = {}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
+                    bs_kwargs["link_title"] = og_meta["title"]
+                    bs_kwargs["link_description"] = og_meta["description"]
+                    bs_kwargs["thumbnail_url"] = og_meta["image"]
                 if video_path:
                     bs_kwargs["video_path"] = video_path
                     bs_kwargs["video_chunk_index"] = bs_video_idx
@@ -1037,6 +1051,9 @@ def single(ctx, message):
                 bs_kwargs = {"text": message}
                 if link_url:
                     bs_kwargs["link_url"] = link_url
+                    bs_kwargs["link_title"] = og_meta["title"]
+                    bs_kwargs["link_description"] = og_meta["description"]
+                    bs_kwargs["thumbnail_url"] = og_meta["image"]
                 if video_path:
                     bs_kwargs["video_path"] = video_path
                     if video_alt:
