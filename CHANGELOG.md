@@ -1,3 +1,9 @@
+## v0.10.0 (2026-03-23)
+
+### Feat
+
+- **file**: auto-resize images before posting local markdown files
+
 ## v0.9.0 (2026-03-23)
 
 ### Feat
