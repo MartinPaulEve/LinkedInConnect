@@ -9,7 +9,7 @@
 ![AT Protocol](https://img.shields.io/badge/Bluesky-AT%20Protocol-0285FF?logo=bluesky&logoColor=white)
 ![Mastodon](https://img.shields.io/badge/Mastodon-API-6364FF?logo=mastodon&logoColor=white)
 ![LinkedIn](https://img.shields.io/badge/LinkedIn-API-0A66C2?logo=linkedin&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-354%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-378%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/Coverage-93%25-brightgreen)
 
 # linkedin-blog-sync
@@ -40,19 +40,20 @@ It handles the differences between platforms so you don't have to think about th
 
 **`linkedin-sync single "<message>"`** — posts an ad-hoc message to all social networks. This doesn't use a feed or markdown file — it posts exactly what you type. If the message contains a URL, a link card embed is created on LinkedIn and Bluesky (Mastodon auto-embeds links). Long messages are automatically threaded on Bluesky (>300 chars) and Mastodon (>500 chars), with thread indicators (🧵1/3, etc.).
 
-You can include a local image path in the message and it will be uploaded as an image attachment on all platforms:
+You can include local image paths in the message and they will be uploaded as image attachments on all platforms. Multiple images are supported (up to 4 per platform):
 
 ```bash
 linkedin-sync single "Just published my new paper ~/screenshots/figure1.png"
+linkedin-sync single "Before and after ~/before.png ~/after.jpg"
 ```
 
-The image path is automatically detected and stripped from the posted text — your followers will see `"Just published my new paper"` with the image attached, not the file path. Supported path formats:
+The image paths are automatically detected and stripped from the posted text — your followers will see the text with the images attached, not the file paths. Supported path formats:
 
 - Absolute paths: `/home/user/photos/image.png`
 - Home-relative: `~/photos/image.jpg`
 - Relative: `./image.gif` or `../assets/photo.webp`
 
-Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
+Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`. LinkedIn uses its `multiImage` content type for 2+ images; Bluesky and Mastodon support up to 4 images per post natively.
 
 **Video uploads** work the same way — just reference a local video file:
 
@@ -60,18 +61,19 @@ Supported image formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
 linkedin-sync single "Check out this demo ~/recordings/demo.mp4"
 ```
 
-Supported video formats: `.mp4`, `.mov`, `.mkv`, `.avi`, `.webm`, `.m4v`. Files that aren't already MP4/H.264 are automatically transcoded via `ffmpeg` before uploading for maximum platform compatibility. You need `ffmpeg` installed on your system for transcoding.
+Supported video formats: `.mp4`, `.mov`, `.mkv`, `.avi`, `.webm`, `.m4v`. Files that aren't already MP4/H.264 are automatically transcoded via `ffmpeg` before uploading for maximum platform compatibility. You need `ffmpeg` installed on your system for transcoding. If a video and images appear in the same message, the video takes precedence and images are ignored (platforms don't support mixing them).
 
 You can add alt text to images or videos by placing it in square brackets immediately after the file path:
 
 ```bash
 linkedin-sync single "A post. ~/spencer.jpeg [An image of a bear]"
+linkedin-sync single "Pets ~/cat.png [A tabby cat] ~/dog.jpg [A golden retriever]"
 linkedin-sync single "Watch ~/clip.mp4 [A cat dancing on a piano]"
 ```
 
 The alt text is set on the media attachment for all three platforms (LinkedIn, Bluesky, and Mastodon) and stripped from the posted text along with the file path. If no alt text is provided, the media is uploaded without it.
 
-For threaded messages, the media is placed on the correct thread post based on where it appeared in the original text. If you put the file path near the end of a long message, it will be attached to the later thread post, not the first one.
+For threaded messages, each image is placed on the correct thread post based on where it appeared in the original text. If you put file paths near the end of a long message, they will be attached to the later thread posts, not the first one. Multiple images can end up on the same thread post if they are close together in the text.
 
 You can combine media with a URL in the same message. On LinkedIn, media takes precedence over the link card embed.
 
@@ -142,7 +144,7 @@ uv run pytest -v        # verbose
 uv run pytest --cov     # with coverage
 ```
 
-Current state: **354 tests passing, 93% line coverage**. Coverage by module:
+Current state: **378 tests passing, 93% line coverage**. Coverage by module:
 
 | Module | Coverage |
 |--------|----------|

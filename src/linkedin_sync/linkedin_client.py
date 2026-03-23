@@ -308,6 +308,8 @@ class LinkedInClient:
         text: str,
         image_urn: str | None = None,
         image_alt_text: str | None = None,
+        image_urns: list[str] | None = None,
+        image_alt_texts: list[str] | None = None,
         video_urn: str | None = None,
         article_url: str | None = None,
         article_title: str | None = None,
@@ -317,17 +319,26 @@ class LinkedInClient:
 
         Args:
             text: The post commentary text.
-            image_urn: Optional image URN from upload_image().
-            image_alt_text: Alt text for the image.
+            image_urn: Optional single image URN from upload_image().
+            image_alt_text: Alt text for the single image.
+            image_urns: Optional list of image URNs for multi-image.
+            image_alt_texts: Alt texts matching image_urns.
             video_urn: Optional video URN from upload_video().
             article_url: Optional URL to share as an article link.
             article_title: Title for the article link.
             article_description: Description for the article link.
         """
+        # Normalise: merge single image param into list form
+        all_urns = image_urns or ([image_urn] if image_urn else [])
+        all_alts = image_alt_texts or (
+            [image_alt_text] if image_alt_text else []
+        )
+
         log.info(
             "creating_post",
             text_length=len(text),
-            has_image=bool(image_urn),
+            has_image=bool(all_urns),
+            image_count=len(all_urns),
             has_video=bool(video_urn),
             has_article=bool(article_url),
         )
@@ -351,11 +362,19 @@ class LinkedInClient:
                     "id": video_urn,
                 }
             }
-        elif image_urn:
+        elif len(all_urns) > 1:
+            # Multi-image post
+            images = []
+            for i, urn in enumerate(all_urns):
+                alt = all_alts[i] if i < len(all_alts) else "Blog post image"
+                images.append({"id": urn, "altText": alt})
+            body["content"] = {"multiImage": {"images": images}}
+        elif len(all_urns) == 1:
+            alt = all_alts[0] if all_alts else "Blog post image"
             body["content"] = {
                 "media": {
-                    "id": image_urn,
-                    "altText": image_alt_text or "Blog post image",
+                    "id": all_urns[0],
+                    "altText": alt,
                 }
             }
         elif article_url:

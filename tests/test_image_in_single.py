@@ -228,10 +228,10 @@ class TestSingleCommandWithImage:
         result = runner.invoke(cli, ["single", f"Check this out {img}"])
         assert result.exit_code == 0
 
-        # LinkedIn should upload image and create post with image_urn
+        # LinkedIn should upload image and create post with image_urns
         li.upload_image.assert_called_once_with(image_path=str(img))
         li_kwargs = li.create_post.call_args.kwargs
-        assert li_kwargs["image_urn"] == "urn:li:image:123"
+        assert li_kwargs["image_urns"] == ["urn:li:image:123"]
         # Image path should NOT be in the text
         assert str(img) not in li_kwargs["text"]
 
@@ -252,7 +252,7 @@ class TestSingleCommandWithImage:
         assert result.exit_code == 0
 
         bs_kwargs = bs.create_post.call_args.kwargs
-        assert bs_kwargs["image_path"] == str(img)
+        assert bs_kwargs["image_paths"] == [str(img)]
         assert str(img) not in bs_kwargs["text"]
 
     @patch("linkedin_sync.sync._make_clients")
@@ -272,7 +272,7 @@ class TestSingleCommandWithImage:
         assert result.exit_code == 0
 
         md_kwargs = md.create_post.call_args.kwargs
-        assert md_kwargs["image_path"] == str(img)
+        assert md_kwargs["image_paths"] == [str(img)]
         assert str(img) not in md_kwargs["text"]
 
     @patch("linkedin_sync.sync._make_clients")
@@ -318,8 +318,12 @@ class TestSingleCommandWithImage:
 
         # Bluesky should thread with image on a later chunk (not 0)
         bs_kwargs = bs.create_thread.call_args.kwargs
-        assert bs_kwargs["image_path"] == str(img)
-        assert bs_kwargs["image_chunk_index"] > 0
+        ibc = bs_kwargs["images_by_chunk"]
+        # Image should be on a chunk > 0
+        assert all(idx > 0 for idx in ibc)
+        # The image path should be present
+        all_paths = [p for imgs in ibc.values() for p, _a in imgs]
+        assert str(img) in all_paths
 
     @patch("linkedin_sync.sync._make_clients")
     def test_image_in_thread_placed_at_correct_chunk_mastodon(
@@ -344,8 +348,10 @@ class TestSingleCommandWithImage:
         assert result.exit_code == 0
 
         md_kwargs = md.create_thread.call_args.kwargs
-        assert md_kwargs["image_path"] == str(img)
-        assert md_kwargs["image_chunk_index"] > 0
+        ibc = md_kwargs["images_by_chunk"]
+        assert all(idx > 0 for idx in ibc)
+        all_paths = [p for imgs in ibc.values() for p, _a in imgs]
+        assert str(img) in all_paths
 
     @patch("linkedin_sync.sync._make_clients")
     def test_dry_run_shows_image_info(self, mock_mc, runner, tmp_path):
@@ -383,7 +389,7 @@ class TestSingleCommandWithImage:
         # LinkedIn gets image (image takes precedence over article)
         li.upload_image.assert_called_once()
         li_kwargs = li.create_post.call_args.kwargs
-        assert li_kwargs["image_urn"] == "urn:li:image:123"
+        assert li_kwargs["image_urns"] == ["urn:li:image:123"]
 
     @patch("linkedin_sync.sync._make_clients")
     def test_alt_text_passed_to_all_platforms(self, mock_mc, runner, tmp_path):
@@ -403,20 +409,20 @@ class TestSingleCommandWithImage:
         result = runner.invoke(cli, ["single", msg])
         assert result.exit_code == 0
 
-        # Alt text passed to LinkedIn
+        # Alt text passed to LinkedIn (as list)
         li_kwargs = li.create_post.call_args.kwargs
-        assert li_kwargs["image_alt_text"] == "An image of a bear"
+        assert li_kwargs["image_alt_texts"] == ["An image of a bear"]
         # Alt text in posted text
         assert "[An image of a bear]" not in li_kwargs["text"]
         assert str(img) not in li_kwargs["text"]
 
-        # Alt text passed to Bluesky
+        # Alt text passed to Bluesky (as list)
         bs_kwargs = bs.create_post.call_args.kwargs
-        assert bs_kwargs["image_alt"] == "An image of a bear"
+        assert bs_kwargs["image_alts"] == ["An image of a bear"]
 
-        # Alt text passed to Mastodon
+        # Alt text passed to Mastodon (as list)
         md_kwargs = md.create_post.call_args.kwargs
-        assert md_kwargs["image_alt"] == "An image of a bear"
+        assert md_kwargs["image_alts"] == ["An image of a bear"]
 
     @patch("linkedin_sync.sync._make_clients")
     def test_no_alt_text_not_passed(self, mock_mc, runner, tmp_path):
@@ -436,11 +442,11 @@ class TestSingleCommandWithImage:
         assert result.exit_code == 0
 
         li_kwargs = li.create_post.call_args.kwargs
-        assert li_kwargs.get("image_alt_text") is None
+        assert li_kwargs["image_alt_texts"] == [None]
         bs_kwargs = bs.create_post.call_args.kwargs
-        assert bs_kwargs.get("image_alt") is None
+        assert bs_kwargs["image_alts"] == [None]
         md_kwargs = md.create_post.call_args.kwargs
-        assert md_kwargs.get("image_alt") is None
+        assert md_kwargs["image_alts"] == [None]
 
     @patch("linkedin_sync.sync._make_clients")
     def test_alt_text_in_thread(self, mock_mc, runner, tmp_path):
@@ -462,7 +468,10 @@ class TestSingleCommandWithImage:
         assert result.exit_code == 0
 
         bs_kwargs = bs.create_thread.call_args.kwargs
-        assert bs_kwargs["image_alt"] == "A bear photo"
+        ibc = bs_kwargs["images_by_chunk"]
+        # Alt text should be present on the image
+        all_alts = [a for imgs in ibc.values() for _p, a in imgs]
+        assert "A bear photo" in all_alts
 
     @patch("linkedin_sync.sync._make_clients")
     def test_linkedin_upload_failure_still_posts(
