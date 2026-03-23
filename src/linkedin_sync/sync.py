@@ -18,6 +18,7 @@ from linkedin_sync.feed_parser import (
     parse_markdown_file,
 )
 from linkedin_sync.formatter import format_for_linkedin
+from linkedin_sync.image_checker import extract_image_paths, resize_image
 from linkedin_sync.logging_config import configure_logging, get_logger
 from linkedin_sync.summarizer import summarize_post, summarize_post_short
 from linkedin_sync.sync_tracker import SyncTracker
@@ -451,6 +452,29 @@ def _make_clients(dry_run: bool, only: set[str] | None = None) -> tuple:
     return (li, bs, md)
 
 
+def _auto_check_images(file_path: str) -> None:
+    """Extract and auto-resize images referenced in a markdown file.
+
+    Finds all locally-referenced images and resizes any that exceed
+    the standard bounding box. Runs before posting so platforms
+    receive correctly-sized images.
+    """
+    try:
+        image_paths = extract_image_paths(file_path)
+    except FileNotFoundError:
+        return
+
+    if not image_paths:
+        return
+
+    log.info("auto_image_check", file=file_path, count=len(image_paths))
+    for img_path in image_paths:
+        if not img_path.is_file():
+            log.warning("image_not_found", path=str(img_path))
+            continue
+        resize_image(img_path)
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(
     version=version("linkedin-blog-sync"),
@@ -607,6 +631,7 @@ def post(ctx, url_or_path):
 
     # Detect whether argument is a local file or a URL
     if Path(url_or_path).is_file():
+        _auto_check_images(url_or_path)
         try:
             found_post = parse_markdown_file(url_or_path)
         except (FileNotFoundError, ValueError) as e:
@@ -649,6 +674,8 @@ def file(ctx, path):
     dry_run = ctx.obj["dry_run"]
     force = ctx.obj["force"]
     tracker = ctx.obj["tracker"]
+
+    _auto_check_images(path)
 
     try:
         found_post = parse_markdown_file(path)
