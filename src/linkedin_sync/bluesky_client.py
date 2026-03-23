@@ -1,10 +1,12 @@
 """Bluesky client for posting via the AT Protocol."""
 
+import io
 import os
 import re
 
 import requests
 from atproto import Client, client_utils, models
+from PIL import Image
 
 from linkedin_sync.logging_config import get_logger
 
@@ -13,8 +15,69 @@ log = get_logger(__name__)
 # Bluesky post limit is 300 graphemes
 MAX_POST_LENGTH = 300
 
+# Bluesky image blob size limit (976.56 KB ≈ 1,000,000 bytes)
+BLUESKY_MAX_IMAGE_SIZE = 1_000_000
+
 # Regex to find URLs in text
 _URL_RE = re.compile(r"https?://[^\s)<>]+")
+
+
+def _resize_image_data(
+    data: bytes,
+    max_size: int = BLUESKY_MAX_IMAGE_SIZE,
+) -> bytes:
+    """Resize image data in-memory so it fits under *max_size* bytes.
+
+    If the image is already small enough it is returned unchanged.
+    Otherwise the image is progressively scaled down and re-encoded
+    as JPEG (for better compression) until it fits. The aspect ratio
+    is always preserved.
+    """
+    if len(data) <= max_size:
+        return data
+
+    img = Image.open(io.BytesIO(data))
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+
+    orig_w, orig_h = img.size
+    log.info(
+        "bluesky_image_resize_start",
+        original_bytes=len(data),
+        max_bytes=max_size,
+        dimensions=f"{orig_w}x{orig_h}",
+    )
+
+    # Try progressively smaller scales
+    for scale in (0.75, 0.5, 0.35, 0.25, 0.15, 0.1):
+        new_w = max(1, int(orig_w * scale))
+        new_h = max(1, int(orig_h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        resized.save(buf, format="JPEG", quality=85, optimize=True)
+        result = buf.getvalue()
+        if len(result) <= max_size:
+            log.info(
+                "bluesky_image_resized",
+                new_bytes=len(result),
+                new_dimensions=f"{new_w}x{new_h}",
+                scale=f"{scale:.2f}",
+            )
+            return result
+
+    # Last resort: very aggressive quality reduction at smallest scale
+    new_w = max(1, int(orig_w * 0.1))
+    new_h = max(1, int(orig_h * 0.1))
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    buf = io.BytesIO()
+    resized.save(buf, format="JPEG", quality=60, optimize=True)
+    result = buf.getvalue()
+    log.warning(
+        "bluesky_image_resize_aggressive",
+        final_bytes=len(result),
+        new_dimensions=f"{new_w}x{new_h}",
+    )
+    return result
 
 
 def _build_text_with_links(text: str) -> client_utils.TextBuilder:
@@ -300,12 +363,16 @@ class BlueskyClient:
     def _upload_image_file(self, image_path: str):
         """Upload a local image file as a blob.
 
+        If the file exceeds Bluesky's size limit it is automatically
+        resized in-memory (preserving aspect ratio) before uploading.
+
         Returns the blob reference for use in image embeds, or None
         on failure.
         """
         try:
             with open(image_path, "rb") as f:
                 image_data = f.read()
+            image_data = _resize_image_data(image_data)
             upload = self._client.upload_blob(image_data)
             log.info(
                 "bluesky_image_uploaded",
