@@ -1,5 +1,6 @@
 """Check and resize images referenced in markdown blog posts."""
 
+import os
 import re
 from pathlib import Path
 
@@ -189,3 +190,70 @@ def resize_image(image_path: Path) -> None:
         new_size=f"{new_w}x{new_h}",
         file_size_kb=f"{file_size / 1024:.0f}",
     )
+
+
+def prepare_fallback_image(image_path: str | None) -> str | None:
+    """Prepare a local image as an OG fallback thumbnail.
+
+    Copies the image to a temporary file, resizes it to fit within
+    1200x630 (standard OG dimensions), and compresses it.
+    Returns the path to the prepared temp file, or None on failure.
+    The caller is responsible for cleaning up the temp file.
+    """
+    if not image_path:
+        return None
+
+    src = Path(image_path)
+    if not src.is_file():
+        log.warning(
+            "fallback_image_not_found",
+            path=image_path,
+        )
+        return None
+
+    try:
+        img = Image.open(src)
+        original_format = (img.format or "JPEG").upper()
+        ext = ".jpg" if original_format == "JPEG" else ".png"
+
+        import tempfile
+
+        fd, tmp_name = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+
+        # Resize to fit OG bounding box
+        orig_w, orig_h = img.size
+        scale_w = MAX_WIDTH / orig_w
+        scale_h = MAX_HEIGHT / orig_h
+        scale = min(scale_w, scale_h, 1.0)
+
+        if scale < 1.0:
+            new_w = int(orig_w * scale)
+            new_h = int(orig_h * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+
+        save_kwargs: dict = {}
+        if original_format == "JPEG":
+            save_kwargs["quality"] = 85
+            save_kwargs["optimize"] = True
+        elif original_format == "PNG":
+            save_kwargs["optimize"] = True
+
+        img.save(str(tmp_path), format=original_format, **save_kwargs)
+
+        log.info(
+            "fallback_image_prepared",
+            source=image_path,
+            output=str(tmp_path),
+            size=f"{img.size[0]}x{img.size[1]}",
+            file_size_kb=f"{tmp_path.stat().st_size / 1024:.0f}",
+        )
+        return str(tmp_path)
+    except Exception as exc:
+        log.warning(
+            "fallback_image_prepare_failed",
+            path=image_path,
+            error=str(exc),
+        )
+        return None

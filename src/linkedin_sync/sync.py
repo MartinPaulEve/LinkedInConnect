@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sync blog posts to LinkedIn, Bluesky, and Mastodon."""
 
+import contextlib
 import logging
 import os
 import re
@@ -18,7 +19,11 @@ from linkedin_sync.feed_parser import (
     parse_markdown_file,
 )
 from linkedin_sync.formatter import format_for_linkedin
-from linkedin_sync.image_checker import extract_image_paths, resize_image
+from linkedin_sync.image_checker import (
+    extract_image_paths,
+    prepare_fallback_image,
+    resize_image,
+)
 from linkedin_sync.logging_config import configure_logging, get_logger
 from linkedin_sync.og_fetcher import fetch_og_metadata
 from linkedin_sync.summarizer import summarize_post, summarize_post_short
@@ -827,8 +832,16 @@ def image_check(ctx, path):
 
 @cli.command()
 @click.argument("message")
+@click.option(
+    "--fallback-image",
+    default=None,
+    help=(
+        "Local image to use as link card thumbnail when the "
+        "OpenGraph image cannot be retrieved."
+    ),
+)
 @click.pass_context
-def single(ctx, message):
+def single(ctx, message, fallback_image):
     """Post an ad-hoc message to all social networks.
 
     The message is posted as-is. If it contains a URL, a link card
@@ -895,6 +908,16 @@ def single(ctx, message):
         else {"title": "", "description": "", "image": None}
     )
 
+    # Prepare fallback image when OG image is unavailable
+    fallback_image_path = None
+    if (
+        link_url
+        and not has_local_media
+        and not og_meta["image"]
+        and fallback_image
+    ):
+        fallback_image_path = prepare_fallback_image(fallback_image)
+
     # Split message into chunks for platforms with lower limits
     from linkedin_sync.bluesky_client import MAX_POST_LENGTH as BS_MAX
     from linkedin_sync.mastodon_client import DEFAULT_MAX_LENGTH as MD_MAX
@@ -933,6 +956,8 @@ def single(ctx, message):
             "dry_run_single",
             message=message,
             link_url=link_url,
+            og_image=og_meta["image"],
+            fallback_image=fallback_image_path,
             image_paths=image_paths,
             image_count=len(image_items),
             video_path=video_path,
@@ -1017,9 +1042,31 @@ def single(ctx, message):
                     li_kwargs["image_alt_texts"] = uploaded_alts
                     has_li_media = True
             if not has_li_media and link_url:
-                li_kwargs["article_url"] = link_url
-                li_kwargs["article_title"] = og_meta["title"]
-                li_kwargs["article_description"] = og_meta["description"]
+                if fallback_image_path:
+                    # Upload fallback image as post image since
+                    # LinkedIn can't fetch OG from the target site
+                    try:
+                        fb_urn = li_client.upload_image(
+                            image_path=fallback_image_path
+                        )
+                        li_kwargs["image_urn"] = fb_urn
+                        li_kwargs["image_alt_text"] = (
+                            og_meta["title"] or "Link preview"
+                        )
+                    except Exception as e:
+                        log.warning(
+                            "linkedin_fallback_upload_failed",
+                            error=str(e),
+                        )
+                        li_kwargs["article_url"] = link_url
+                        li_kwargs["article_title"] = og_meta["title"]
+                        li_kwargs["article_description"] = og_meta[
+                            "description"
+                        ]
+                else:
+                    li_kwargs["article_url"] = link_url
+                    li_kwargs["article_title"] = og_meta["title"]
+                    li_kwargs["article_description"] = og_meta["description"]
             li_client.create_post(**li_kwargs)
             log.info("linkedin_single_posted")
         except Exception as e:
@@ -1035,6 +1082,8 @@ def single(ctx, message):
                     bs_kwargs["link_title"] = og_meta["title"]
                     bs_kwargs["link_description"] = og_meta["description"]
                     bs_kwargs["thumbnail_url"] = og_meta["image"]
+                    if not og_meta["image"] and fallback_image_path:
+                        bs_kwargs["thumbnail_path"] = fallback_image_path
                 if video_path:
                     bs_kwargs["video_path"] = video_path
                     bs_kwargs["video_chunk_index"] = bs_video_idx
@@ -1054,6 +1103,8 @@ def single(ctx, message):
                     bs_kwargs["link_title"] = og_meta["title"]
                     bs_kwargs["link_description"] = og_meta["description"]
                     bs_kwargs["thumbnail_url"] = og_meta["image"]
+                    if not og_meta["image"] and fallback_image_path:
+                        bs_kwargs["thumbnail_path"] = fallback_image_path
                 if video_path:
                     bs_kwargs["video_path"] = video_path
                     if video_alt:
@@ -1098,6 +1149,11 @@ def single(ctx, message):
                 log.info("mastodon_single_posted")
         except Exception as e:
             log.error("mastodon_single_failed", error=str(e))
+
+    # Clean up temp fallback image
+    if fallback_image_path:
+        with contextlib.suppress(OSError):
+            Path(fallback_image_path).unlink(missing_ok=True)
 
 
 def _platform_names(li, bs, md) -> list[str]:
