@@ -45,6 +45,11 @@ class TestSplitMessageThreading:
         result = split_message(text, 300)
         assert result[0].endswith(" 🧵1/2")
         assert result[1].endswith(" 🧵2/2")
+        # First chunk should have end ellipsis before indicator
+        text_part = result[0].rsplit(" 🧵", 1)[0]
+        assert text_part.endswith("...")
+        # Second chunk should start with ellipsis
+        assert result[1].startswith("...")
 
     def test_no_chunk_exceeds_limit(self):
         text = "word " * 200  # 1000 chars
@@ -75,10 +80,12 @@ class TestSplitMessageThreading:
         """All original words should appear across the chunks."""
         text = "The quick brown fox jumps over the lazy dog " * 10
         result = split_message(text, 100)
-        # Reconstruct text from chunks by stripping indicators
+        # Reconstruct text from chunks by stripping indicators and ellipses
         reconstructed_words = []
         for chunk in result:
             text_part = chunk.rsplit(" 🧵", 1)[0]
+            # Strip ellipsis markers
+            text_part = text_part.strip(". ")
             reconstructed_words.extend(text_part.split())
         original_words = text.split()
         assert reconstructed_words == original_words
@@ -149,7 +156,9 @@ class TestSplitMessageEdgeCases:
         text = "a" * 400
         result = split_message(text, 300)
         # Should handle gracefully - the word must appear somewhere
-        all_text = "".join(chunk.rsplit(" 🧵", 1)[0] for chunk in result)
+        all_text = "".join(
+            chunk.rsplit(" 🧵", 1)[0].strip(". ") for chunk in result
+        )
         assert "a" * 400 in all_text
 
     def test_indicator_space_reserved_correctly(self):

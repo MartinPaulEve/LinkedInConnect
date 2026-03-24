@@ -5,14 +5,30 @@ import re
 # Regex to find URLs in text (same pattern used in bluesky_client and sync)
 _URL_RE = re.compile(r"https?://[^\s)<>]+")
 
+ELLIPSIS = "..."
 
-def split_message(text: str, max_length: int) -> list[str]:
+
+def split_message(
+    text: str,
+    max_length: int,
+    start_ellipsis: bool = True,
+    end_ellipsis: bool = True,
+) -> list[str]:
     """Split a message into chunks suitable for threading.
 
     If the text fits within *max_length*, it is returned as a single-element
     list with **no** thread indicator.  Otherwise the text is split at word
     boundaries and each chunk receives a thread indicator suffix like
     ``" 🧵1/4"``.
+
+    When threading occurs, continuation markers are added:
+
+    - *end_ellipsis*: ``...`` is appended to every chunk except the last,
+      just before the thread indicator.
+    - *start_ellipsis*: ``...`` is prepended to every chunk except the first.
+
+    Both default to ``True``.  The ellipsis characters are factored into the
+    character budget so that no chunk exceeds *max_length*.
 
     URLs are treated as unsplittable tokens so they are never broken across
     chunks.
@@ -25,19 +41,43 @@ def split_message(text: str, max_length: int) -> list[str]:
 
     # We don't know the total number of chunks yet, so we do an iterative
     # approach: estimate, split, check, re-split if indicator length changed.
-    estimate = _estimate_chunk_count(tokens, max_length)
-    chunks = _split_tokens(tokens, max_length, estimate)
+    estimate = _estimate_chunk_count(
+        tokens, max_length, start_ellipsis, end_ellipsis
+    )
+    chunks = _split_tokens(
+        tokens, max_length, estimate, start_ellipsis, end_ellipsis
+    )
 
     # If actual count differs from estimate, the indicator length may have
     # changed (e.g. "1/9" vs "1/10").  Re-split with corrected estimate.
     if len(chunks) != estimate:
-        chunks = _split_tokens(tokens, max_length, len(chunks))
-        # One more pass if it changed again (unlikely but safe)
-        if len(chunks) != len(chunks):  # pragma: no cover
-            pass
+        chunks = _split_tokens(
+            tokens,
+            max_length,
+            len(chunks),
+            start_ellipsis,
+            end_ellipsis,
+        )
 
     total = len(chunks)
-    return [f"{chunk} 🧵{i + 1}/{total}" for i, chunk in enumerate(chunks)]
+    result = []
+    for i, chunk in enumerate(chunks):
+        parts = []
+
+        # Start ellipsis on non-first chunks
+        if start_ellipsis and i > 0:
+            parts.append(ELLIPSIS)
+
+        parts.append(chunk)
+
+        # End ellipsis on non-last chunks
+        if end_ellipsis and i < total - 1:
+            parts.append(ELLIPSIS)
+
+        text_portion = " ".join(parts)
+        result.append(f"{text_portion} 🧵{i + 1}/{total}")
+
+    return result
 
 
 def _tokenise(text: str) -> list[str]:
@@ -69,20 +109,69 @@ def _max_indicator_len(total: int) -> int:
     return _indicator_len(total, total)
 
 
-def _estimate_chunk_count(tokens: list[str], max_length: int) -> int:
+def _ellipsis_overhead(
+    chunk_index: int,
+    total: int,
+    start_ellipsis: bool,
+    end_ellipsis: bool,
+) -> int:
+    """Extra characters needed for ellipsis markers on a given chunk.
+
+    Start ellipsis adds "... " (4 chars) and end ellipsis adds " ..."
+    (4 chars).
+    """
+    overhead = 0
+    if start_ellipsis and chunk_index > 0:
+        overhead += len(ELLIPSIS) + 1  # "... " (ellipsis + space)
+    if end_ellipsis and chunk_index < total - 1:
+        overhead += len(ELLIPSIS) + 1  # " ..." (space + ellipsis)
+    return overhead
+
+
+def _max_ellipsis_overhead(
+    total: int,
+    start_ellipsis: bool,
+    end_ellipsis: bool,
+) -> int:
+    """Worst-case ellipsis overhead (a middle chunk with both markers)."""
+    if total <= 1:
+        return 0
+    # Middle chunks have both start and end ellipsis
+    overhead = 0
+    if start_ellipsis:
+        overhead += len(ELLIPSIS) + 1
+    if end_ellipsis:
+        overhead += len(ELLIPSIS) + 1
+    return overhead
+
+
+def _estimate_chunk_count(
+    tokens: list[str],
+    max_length: int,
+    start_ellipsis: bool,
+    end_ellipsis: bool,
+) -> int:
     """Rough estimate of how many chunks we'll need."""
     total_len = sum(len(t) for t in tokens) + len(tokens) - 1  # spaces
-    # Start with a generous guess
-    est = max(2, total_len // (max_length - 10) + 1)
+    # Account for worst-case ellipsis + indicator overhead
+    overhead = _max_ellipsis_overhead(2, start_ellipsis, end_ellipsis)
+    est = max(2, total_len // (max_length - 10 - overhead) + 1)
     return est
 
 
 def _split_tokens(
-    tokens: list[str], max_length: int, estimated_total: int
+    tokens: list[str],
+    max_length: int,
+    estimated_total: int,
+    start_ellipsis: bool,
+    end_ellipsis: bool,
 ) -> list[str]:
-    """Split tokens into chunks, reserving space for thread indicators."""
-    reserved = _max_indicator_len(estimated_total)
-    effective_limit = max_length - reserved
+    """Split tokens into chunks, reserving space for indicators + ellipses."""
+    reserved_indicator = _max_indicator_len(estimated_total)
+    reserved_ellipsis = _max_ellipsis_overhead(
+        estimated_total, start_ellipsis, end_ellipsis
+    )
+    effective_limit = max_length - reserved_indicator - reserved_ellipsis
 
     chunks: list[str] = []
     current_words: list[str] = []
