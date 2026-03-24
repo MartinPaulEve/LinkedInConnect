@@ -155,6 +155,7 @@ class BlueskyClient:
         link_title: str | None = None,
         link_description: str | None = None,
         thumbnail_url: str | None = None,
+        thumbnail_path: str | None = None,
         image_path: str | None = None,
         image_alt: str | None = None,
         image_paths: list[str] | None = None,
@@ -168,6 +169,8 @@ class BlueskyClient:
         as a video embed. If image_paths (or image_path) is provided,
         images are uploaded as an image embed (up to 4). If link_url
         is provided (and no media), a link card embed is created.
+        For link cards, thumbnail_url (remote) or thumbnail_path
+        (local file) provides the card image.
         Video > images > link.
         """
         # Normalise single image param into list form
@@ -201,6 +204,8 @@ class BlueskyClient:
             thumb_blob = None
             if thumbnail_url:
                 thumb_blob = self._upload_thumbnail(thumbnail_url)
+            elif thumbnail_path:
+                thumb_blob = self._upload_image_file(thumbnail_path)
 
             embed = models.AppBskyEmbedExternal.Main(
                 external=models.AppBskyEmbedExternal.External(
@@ -226,6 +231,7 @@ class BlueskyClient:
         link_title: str | None = None,
         link_description: str | None = None,
         thumbnail_url: str | None = None,
+        thumbnail_path: str | None = None,
         image_path: str | None = None,
         image_chunk_index: int = 0,
         image_alt: str | None = None,
@@ -304,6 +310,8 @@ class BlueskyClient:
                 thumb_blob = None
                 if thumbnail_url:
                     thumb_blob = self._upload_thumbnail(thumbnail_url)
+                elif thumbnail_path:
+                    thumb_blob = self._upload_image_file(thumbnail_path)
                 embed = models.AppBskyEmbedExternal.Main(
                     external=models.AppBskyEmbedExternal.External(
                         uri=link_url,

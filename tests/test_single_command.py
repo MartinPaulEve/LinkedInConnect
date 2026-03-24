@@ -366,3 +366,97 @@ class TestSingleCommand:
         )
         assert result.exit_code == 0
         mock_og.assert_not_called()
+
+    @patch("linkedin_sync.sync.prepare_fallback_image")
+    @patch("linkedin_sync.sync.fetch_og_metadata")
+    @patch("linkedin_sync.sync._make_clients")
+    def test_fallback_image_used_when_og_image_missing(
+        self, mock_mc, mock_og, mock_prep, runner, tmp_path
+    ):
+        """--fallback-image is used when OG returns no image."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:fb1"
+        li.upload_image.return_value = "urn:li:image:fb1"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/fb1"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/fb1"
+        mock_mc.return_value = (li, bs, md)
+
+        mock_og.return_value = {
+            "title": "Article Title",
+            "description": "Article desc",
+            "image": None,  # OG image unavailable
+        }
+        mock_prep.return_value = "/tmp/fallback_prepared.jpg"
+
+        fb_img = tmp_path / "fallback.jpg"
+        fb_img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        result = runner.invoke(
+            cli,
+            [
+                "single",
+                "--fallback-image",
+                str(fb_img),
+                "Check this out https://doi.org/10.1234/test",
+            ],
+        )
+        assert result.exit_code == 0
+
+        # prepare_fallback_image should have been called
+        mock_prep.assert_called_once_with(str(fb_img))
+
+        # Bluesky should get thumbnail_path
+        bs_kwargs = bs.create_post.call_args.kwargs
+        assert bs_kwargs["thumbnail_path"] == "/tmp/fallback_prepared.jpg"
+
+        # LinkedIn should upload the fallback as an image
+        li.upload_image.assert_called_once_with(
+            image_path="/tmp/fallback_prepared.jpg"
+        )
+
+    @patch("linkedin_sync.sync.prepare_fallback_image")
+    @patch("linkedin_sync.sync.fetch_og_metadata")
+    @patch("linkedin_sync.sync._make_clients")
+    def test_fallback_image_not_used_when_og_image_present(
+        self, mock_mc, mock_og, mock_prep, runner, tmp_path
+    ):
+        """--fallback-image is ignored when OG image is available."""
+        li = MagicMock()
+        li.create_post.return_value = "urn:li:share:fb2"
+        bs = MagicMock()
+        bs.create_post.return_value = "https://bsky.app/post/fb2"
+        md = MagicMock()
+        md.create_post.return_value = "https://mastodon.social/@u/fb2"
+        mock_mc.return_value = (li, bs, md)
+
+        mock_og.return_value = {
+            "title": "Title",
+            "description": "Desc",
+            "image": "https://example.com/og-image.jpg",
+        }
+
+        fb_img = tmp_path / "fallback.jpg"
+        fb_img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        result = runner.invoke(
+            cli,
+            [
+                "single",
+                "--fallback-image",
+                str(fb_img),
+                "Post https://example.com/article",
+            ],
+        )
+        assert result.exit_code == 0
+
+        # Fallback should NOT be prepared
+        mock_prep.assert_not_called()
+
+        # Bluesky should use OG image URL, not fallback path
+        bs_kwargs = bs.create_post.call_args.kwargs
+        assert bs_kwargs["thumbnail_url"] == (
+            "https://example.com/og-image.jpg"
+        )
+        assert "thumbnail_path" not in bs_kwargs
