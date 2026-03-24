@@ -840,8 +840,33 @@ def image_check(ctx, path):
         "OpenGraph image cannot be retrieved."
     ),
 )
+@click.option(
+    "--no-ellipses",
+    is_flag=True,
+    default=False,
+    help="Disable all ellipses on threaded posts.",
+)
+@click.option(
+    "--no-start-ellipses",
+    is_flag=True,
+    default=False,
+    help="Disable ellipses at the start of continuation posts.",
+)
+@click.option(
+    "--no-end-ellipses",
+    is_flag=True,
+    default=False,
+    help="Disable ellipses at the end of continued posts.",
+)
 @click.pass_context
-def single(ctx, message, fallback_image):
+def single(
+    ctx,
+    message,
+    fallback_image,
+    no_ellipses,
+    no_start_ellipses,
+    no_end_ellipses,
+):
     """Post an ad-hoc message to all social networks.
 
     The message is posted as-is. If it contains a URL, a link card
@@ -850,6 +875,11 @@ def single(ctx, message, fallback_image):
 
     You can include multiple local image paths and they will all be
     uploaded as attachments (up to 4 per platform).
+
+    Threaded posts include ellipsis markers (``...``) to indicate
+    continuation.  Use ``--no-ellipses`` to disable them entirely,
+    or ``--no-start-ellipses`` / ``--no-end-ellipses`` for granular
+    control.  These can also be set via the .env file.
 
     Example:
 
@@ -918,12 +948,34 @@ def single(ctx, message, fallback_image):
     ):
         fallback_image_path = prepare_fallback_image(fallback_image)
 
+    # Resolve ellipsis settings: built-in default (True) < .env < CLI
+    use_start_ellipsis = _resolve_ellipsis_flag(
+        env_key="THREAD_START_ELLIPSES",
+        cli_disable=no_start_ellipses,
+        cli_disable_all=no_ellipses,
+    )
+    use_end_ellipsis = _resolve_ellipsis_flag(
+        env_key="THREAD_END_ELLIPSES",
+        cli_disable=no_end_ellipses,
+        cli_disable_all=no_ellipses,
+    )
+
     # Split message into chunks for platforms with lower limits
     from linkedin_sync.bluesky_client import MAX_POST_LENGTH as BS_MAX
     from linkedin_sync.mastodon_client import DEFAULT_MAX_LENGTH as MD_MAX
 
-    bs_chunks = split_message(message, BS_MAX)
-    md_chunks = split_message(message, MD_MAX)
+    bs_chunks = split_message(
+        message,
+        BS_MAX,
+        start_ellipsis=use_start_ellipsis,
+        end_ellipsis=use_end_ellipsis,
+    )
+    md_chunks = split_message(
+        message,
+        MD_MAX,
+        start_ellipsis=use_start_ellipsis,
+        end_ellipsis=use_end_ellipsis,
+    )
 
     # Determine which chunk the video belongs to
     bs_video_idx = _image_chunk_index(
@@ -1154,6 +1206,40 @@ def single(ctx, message, fallback_image):
     if fallback_image_path:
         with contextlib.suppress(OSError):
             Path(fallback_image_path).unlink(missing_ok=True)
+
+
+def _resolve_ellipsis_flag(
+    env_key: str,
+    cli_disable: bool,
+    cli_disable_all: bool,
+) -> bool:
+    """Resolve an ellipsis setting with priority: default < .env < CLI.
+
+    The built-in default is True (ellipses on).
+
+    .env values: "true"/"1"/"yes" → enabled, "false"/"0"/"no" → disabled.
+
+    CLI flags are negative (--no-*), so they can only disable.
+    --no-ellipses disables everything; --no-start-ellipses and
+    --no-end-ellipses disable their respective flags.
+    """
+    # CLI override takes highest priority
+    if cli_disable_all or cli_disable:
+        return False
+
+    # .env override (also check the blanket THREAD_ELLIPSES key)
+    blanket = os.environ.get("THREAD_ELLIPSES", "").strip().lower()
+    specific = os.environ.get(env_key, "").strip().lower()
+
+    # Specific key takes priority over blanket
+    for val in (specific, blanket):
+        if val in ("false", "0", "no"):
+            return False
+        if val in ("true", "1", "yes"):
+            return True
+
+    # Built-in default
+    return True
 
 
 def _platform_names(li, bs, md) -> list[str]:
