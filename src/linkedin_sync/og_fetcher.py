@@ -10,9 +10,7 @@ from bs4 import BeautifulSoup
 
 log = structlog.get_logger(__name__)
 
-_DOI_URL_RE = re.compile(
-    r"^https?://(?:dx\.)?doi\.org/(10\.\d{4,}/\S+)$"
-)
+_DOI_URL_RE = re.compile(r"^https?://(?:dx\.)?doi\.org/(10\.\d{4,}/\S+)$")
 
 
 def fetch_og_metadata(url: str | None) -> dict:
@@ -32,9 +30,7 @@ def fetch_og_metadata(url: str | None) -> dict:
             url,
             timeout=15,
             headers={
-                "User-Agent": (
-                    "linkedin-sync/1.0 (OpenGraph fetcher)"
-                ),
+                "User-Agent": ("linkedin-sync/1.0 (OpenGraph fetcher)"),
             },
         )
         resp.raise_for_status()
@@ -57,17 +53,11 @@ def fetch_og_metadata(url: str | None) -> dict:
     # Fallbacks
     if not og_title:
         title_tag = soup.find("title")
-        og_title = (
-            title_tag.get_text(strip=True) if title_tag else ""
-        )
+        og_title = title_tag.get_text(strip=True) if title_tag else ""
 
     if not og_desc:
-        meta_desc = soup.find(
-            "meta", attrs={"name": "description"}
-        )
-        og_desc = (
-            meta_desc.get("content", "") if meta_desc else ""
-        )
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        og_desc = meta_desc.get("content", "") if meta_desc else ""
 
     return {
         "title": og_title or "",
@@ -93,9 +83,7 @@ def _fetch_doi_metadata(doi: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except Exception as exc:
-        log.warning(
-            "doi_metadata_failed", doi=doi, error=str(exc)
-        )
+        log.warning("doi_metadata_failed", doi=doi, error=str(exc))
         return empty
 
     # Title may be a list (CrossRef) or a string (DataCite)

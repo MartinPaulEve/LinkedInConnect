@@ -116,9 +116,7 @@ class TestFetchDoiMetadata:
         resp = MagicMock()
         resp.status_code = 200
         resp.json.return_value = {
-            "title": [
-                "From Punk to Cyberpunk"
-            ],
+            "title": ["From Punk to Cyberpunk"],
             "abstract": "<p>This article examines...</p>",
         }
         resp.raise_for_status = MagicMock()
@@ -130,13 +128,8 @@ class TestFetchDoiMetadata:
         assert meta["image"] is None
 
         # Verify content negotiation header
-        call_headers = mock_get.call_args.kwargs.get(
-            "headers", {}
-        )
-        assert (
-            call_headers.get("Accept")
-            == "application/citeproc+json"
-        )
+        call_headers = mock_get.call_args.kwargs.get("headers", {})
+        assert call_headers.get("Accept") == "application/citeproc+json"
 
     @patch("linkedin_sync.og_fetcher.requests.get")
     def test_handles_string_title(self, mock_get):
