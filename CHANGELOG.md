@@ -1,3 +1,13 @@
+## v0.11.0 (2026-03-24)
+
+### Feat
+
+- **threader**: add ellipsis markers to threaded posts
+- **single**: add --fallback-image option for link card thumbnails
+- **og**: fall back to DOI content negotiation when OG fetch is blocked
+- **single**: fetch OpenGraph metadata for link cards on Bluesky and LinkedIn
+- **dry-run**: show featured_image_url in dry run output
+
 ## v0.10.1 (2026-03-23)
 
 ### Fix
