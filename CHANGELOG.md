@@ -1,3 +1,9 @@
+## v0.12.0 (2026-03-28)
+
+### Feat
+
+- **cli**: allow --only option anywhere on the command line
+
 ## v0.11.0 (2026-03-24)
 
 ### Feat
