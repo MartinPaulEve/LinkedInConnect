@@ -340,6 +340,63 @@ class TestCliOnly:
         assert result.exit_code != 0
         assert "twitter" in result.output.lower()
 
+    @patch("linkedin_sync.sync.get_post_by_url")
+    def test_only_after_subcommand(self, mock_get, runner, tmp_path):
+        """--only should work when placed after the subcommand name."""
+        mock_get.return_value = _make_post()
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                "--only",
+                "linkedin",
+                "https://eve.gd/2025/03/20/test/",
+            ],
+        )
+        assert result.exit_code == 0
+
+    @patch("linkedin_sync.sync.get_post_by_url")
+    def test_only_at_end_of_args(self, mock_get, runner, tmp_path):
+        """--only should work when placed at the very end."""
+        mock_get.return_value = _make_post()
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "--no-summary",
+                "post",
+                "https://eve.gd/2025/03/20/test/",
+                "--only",
+                "linkedin",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_only_invalid_after_subcommand(self, runner, tmp_path):
+        """Invalid platforms should error when --only is after subcommand."""
+        state_file = str(tmp_path / "state.json")
+        result = runner.invoke(
+            cli,
+            [
+                "--state-file",
+                state_file,
+                "--dry-run",
+                "today",
+                "--only",
+                "twitter",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "twitter" in result.output.lower()
+
 
 class TestVerify:
     @patch("linkedin_sync.sync.MastodonClient", create=True)

@@ -5,6 +5,7 @@ import contextlib
 import logging
 import os
 import re
+import typing
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
@@ -484,7 +485,46 @@ def _auto_check_images(file_path: str) -> None:
         resize_image(img_path)
 
 
-@click.group(invoke_without_command=True)
+class _FlexibleOptionGroup(click.Group):
+    """Allow ``--only`` to appear anywhere on the command line.
+
+    Click normally requires group-level options to come *before* the
+    subcommand name.  This subclass intercepts the raw argument list and
+    moves any ``--only <value>`` pair that appears after a known
+    subcommand name to before it, so Click's default parser handles the
+    rest.
+    """
+
+    _HOISTED_OPTIONS: typing.ClassVar[set[str]] = {"--only"}
+
+    def parse_args(self, ctx, args):
+        args = list(args)  # make a mutable copy
+        # Find the first subcommand token
+        cmd_names = self.list_commands(ctx)
+        cmd_idx = None
+        for i, arg in enumerate(args):
+            if arg in cmd_names:
+                cmd_idx = i
+                break
+
+        if cmd_idx is not None:
+            # Walk tokens after the subcommand and hoist matching options
+            new_pre = list(args[:cmd_idx])
+            new_post = [args[cmd_idx]]  # the subcommand itself
+            i = cmd_idx + 1
+            while i < len(args):
+                if args[i] in self._HOISTED_OPTIONS and i + 1 < len(args):
+                    new_pre.extend([args[i], args[i + 1]])
+                    i += 2
+                else:
+                    new_post.append(args[i])
+                    i += 1
+            args = new_pre + new_post
+
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_FlexibleOptionGroup, invoke_without_command=True)
 @click.version_option(
     version=version("linkedin-blog-sync"),
     prog_name="linkedin-blog-sync",
