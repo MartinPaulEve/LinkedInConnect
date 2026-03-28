@@ -2,9 +2,8 @@
 .env
 *.env.local
 
-# Sync state (contains post tracking data - may want to commit this)
-# Uncomment the next line to exclude sync state from git:
-# sync_state.json
+# Sync state (contains post tracking data)
+sync_state.json
 
 # Python
 .coverage
