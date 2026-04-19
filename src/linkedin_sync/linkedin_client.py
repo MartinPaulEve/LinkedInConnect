@@ -18,7 +18,7 @@ log = get_logger(__name__)
 
 LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
 LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
-DEFAULT_LINKEDIN_VERSION = "202504"
+DEFAULT_LINKEDIN_VERSION = "202604"
 
 
 class LinkedInClient:

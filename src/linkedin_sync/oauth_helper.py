@@ -158,7 +158,7 @@ def get_access_token():
     headers = {
         "Authorization": f"Bearer {access_token}",
         "X-Restli-Protocol-Version": "2.0.0",
-        "LinkedIn-Version": "202602",
+        "LinkedIn-Version": "202604",
     }
     me_resp = requests.get("https://api.linkedin.com/rest/me", headers=headers)
     if me_resp.status_code == 200:
