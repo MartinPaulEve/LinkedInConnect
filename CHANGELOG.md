@@ -1,3 +1,9 @@
+## v0.12.1 (2026-04-19)
+
+### Fix
+
+- **linkedin**: bump API version to 202604 to resolve 426 Upgrade Required
+
 ## v0.12.0 (2026-03-28)
 
 ### Feat
